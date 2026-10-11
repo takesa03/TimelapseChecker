@@ -74,3 +74,7 @@ dotnet publish TimelapseChecker.App -c Release -r win-x64 --self-contained true 
 
 - Windows 10 Build 19041 以降
 - .NET 8
+
+## License
+
+MIT License. 詳細は [LICENSE](LICENSE) を参照してください。
