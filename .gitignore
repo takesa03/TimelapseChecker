@@ -1,0 +1,25 @@
+## Build results
+[Bb]in/
+[Oo]bj/
+publish/
+.vs/
+.vscode/
+
+## User-specific files
+*.user
+*.suo
+*_wpftmp.csproj
+
+## 撮影サンプル画像（大容量のため管理対象外）
+fail_case/
+success_case/
+
+## 実行時に生成される設定・ログ
+settings/
+*.log
+
+## 動作確認用のサンプル画像（大容量）
+test/
+
+## Windowsが生成するサムネイルキャッシュ
+Thumbs.db

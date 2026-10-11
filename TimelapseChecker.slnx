@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="TimelapseChecker.App/TimelapseChecker.App.csproj" />
+  <Project Path="TimelapseChecker.Core/TimelapseChecker.Core.csproj" />
+  <Project Path="TimelapseChecker.Replay/TimelapseChecker.Replay.csproj" />
+</Solution>

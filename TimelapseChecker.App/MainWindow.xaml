@@ -1,0 +1,237 @@
+<Window x:Class="TimelapseChecker.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+        Title="Timelapse Checker" Height="900" Width="1100" Icon="AppIcon.ico"
+        MinHeight="520" MinWidth="820"
+        Background="{StaticResource BackgroundBrush}"
+        Foreground="{StaticResource TextPrimaryBrush}">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 監視フォルダ -->
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="監視フォルダ" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox Grid.Column="1" Text="{Binding WatchFolder, UpdateSourceTrigger=PropertyChanged}"
+                     IsEnabled="{Binding IsMonitoring, Converter={StaticResource InverseBool}}"/>
+            <Button Grid.Column="2" Content="参照..." Margin="6,0,0,0" Click="BrowseFolder_Click"
+                    IsEnabled="{Binding IsMonitoring, Converter={StaticResource InverseBool}}"/>
+            <Button Grid.Column="3" Margin="6,0,0,0" Padding="16,4" Command="{Binding ToggleMonitoringCommand}"
+                    Content="{Binding IsMonitoring, Converter={StaticResource BoolToText}, ConverterParameter='監視停止;監視開始'}"/>
+
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="基準画像" VerticalAlignment="Center" Margin="0,6,8,0"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BaselineText}" VerticalAlignment="Center" Margin="0,6,0,0"
+                       TextTrimming="CharacterEllipsis" ToolTip="{Binding BaselineText}"
+                       Foreground="{StaticResource TextSecondaryBrush}"/>
+            <Button Grid.Row="1" Grid.Column="2" Content="指定..." Margin="6,6,0,0" Click="BrowseBaseline_Click"
+                    IsEnabled="{Binding IsMonitoring}"
+                    ToolTip="任意の画像を基準画像として指定し直します"/>
+            <Button Grid.Row="1" Grid.Column="3" Content="最新画像を基準にする" Margin="6,6,0,0"
+                    Command="{Binding UseLatestAsBaselineCommand}" IsEnabled="{Binding IsMonitoring}"
+                    ToolTip="現在表示中の最新画像を新しい基準にします"/>
+        </Grid>
+
+        <!-- 状態バナー -->
+        <Border Grid.Row="1" Margin="0,10,0,10" Padding="14,10" CornerRadius="3" Background="{Binding BannerBrush}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding BannerText}" FontSize="30" FontWeight="Bold"
+                           Foreground="White" VerticalAlignment="Center" Margin="0,0,24,0"/>
+                <TextBlock Grid.Column="1" Text="{Binding ReasonText}" FontSize="13" Foreground="White"
+                           TextWrapping="Wrap" VerticalAlignment="Center"/>
+                <!-- 音が鳴っている間だけ「確認」ボタンを表示し、押した後は「確認済み」表示に切り替える -->
+                <Button Grid.Column="2" Content="確認（音を止める）" Command="{Binding AcknowledgeCommand}"
+                        Visibility="{Binding CanAcknowledge, Converter={StaticResource BoolToVis}}"
+                        VerticalAlignment="Center" Padding="14,8"/>
+                <TextBlock Grid.Column="2" Text="確認済み（音停止中）" FontSize="14" Foreground="White"
+                           Visibility="{Binding IsAcknowledged, Converter={StaticResource BoolToVis}}"
+                           VerticalAlignment="Center" Margin="10,0"/>
+            </Grid>
+        </Border>
+
+        <!-- メイン -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="480"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="基準画像" FontWeight="Bold" Margin="0,0,0,4"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="最新画像" FontWeight="Bold" Margin="6,0,0,4"/>
+
+                <Border Grid.Row="1" Grid.Column="0" Background="Black" Margin="0,0,3,0"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <Image Source="{Binding BaselinePreview}" Stretch="Uniform"/>
+                </Border>
+                <Border Grid.Row="1" Grid.Column="1" Background="Black" Margin="3,0,0,0"
+                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
+                    <Image Source="{Binding PreviewImage}" Stretch="Uniform"/>
+                </Border>
+
+                <TextBlock Grid.Row="2" Grid.Column="1" Margin="6,6,0,4" Text="{Binding LatestFile}"
+                           TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}"/>
+                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding MetricsText}" FontFamily="Consolas" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+            </Grid>
+
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="1.4*" MinHeight="180"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*" MinHeight="90"/>
+                </Grid.RowDefinitions>
+
+                <!-- 指標の推移（直近30分固定）。黄の破線＝注意、赤の点線＝警告の閾値 -->
+                <TextBlock Grid.Row="0" Margin="0,0,0,4">
+                    <Run Text="指標の推移（直近30分）" FontWeight="Bold"/>
+                    <Run Text="  破線: 注意の閾値 / 点線: 警告の閾値" FontSize="11"
+                         Foreground="{StaticResource TextSecondaryBrush}"/>
+                </TextBlock>
+                <Grid Grid.Row="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <lvc:CartesianChart Grid.Row="0" Margin="0,0,0,4" Background="{StaticResource PanelBrush}"
+                                        Series="{Binding AreaSeries}" XAxes="{Binding AreaXAxes}"
+                                        YAxes="{Binding AreaYAxes}" AnimationsSpeed="0:0:0"/>
+                    <lvc:CartesianChart Grid.Row="1" Background="{StaticResource PanelBrush}"
+                                        Series="{Binding ShiftSeries}" XAxes="{Binding ShiftXAxes}"
+                                        YAxes="{Binding ShiftYAxes}" AnimationsSpeed="0:0:0"/>
+                </Grid>
+
+                <TextBlock Grid.Row="2" Text="判定履歴（新しい順）" FontWeight="Bold" Margin="0,8,0,4"/>
+                <ListBox Grid.Row="3" ItemsSource="{Binding History}" HorizontalContentAlignment="Stretch"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="60"/>
+                                    <ColumnDefinition Width="46"/>
+                                    <ColumnDefinition Width="190"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Time, StringFormat=HH:mm:ss}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding LevelText}" Foreground="{Binding LevelBrush}"
+                                           FontWeight="Bold"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Detail}" FontSize="11"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Reason}" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Reason}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Grid>
+
+        <!-- 設定 -->
+        <StackPanel Grid.Row="3" Margin="0,10,0,0">
+            <Expander Header="判定設定（すべて基準フレームに対する相対値）">
+                <Grid Margin="0,8,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="30"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Column="1" Grid.Row="0" Text="注意" Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0"/>
+                    <TextBlock Grid.Column="2" Grid.Row="0" Text="警告" Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0"/>
+
+                    <TextBlock Grid.Row="1" Text="面積比（下回ると）" Margin="0,3,10,3"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.AreaCaution}"/>
+                    <TextBox Grid.Row="1" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.AreaWarning}"/>
+
+                    <TextBlock Grid.Row="2" Text="重心ずれ・半径比（超えると）" Margin="0,3,10,3"/>
+                    <TextBox Grid.Row="2" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.ShiftCaution}"/>
+                    <TextBox Grid.Row="2" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.ShiftWarning}"/>
+
+                    <TextBlock Grid.Row="3" Text="コントラスト比（下回ると）" Margin="0,3,10,3"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.ContrastCaution}"/>
+                    <TextBox Grid.Row="3" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.ContrastWarning}"/>
+
+                    <TextBlock Grid.Row="4" Text="背景の持ち上がり（超えると）" Margin="0,3,10,3"/>
+                    <TextBox Grid.Row="4" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.BackgroundCaution}"/>
+                    <TextBox Grid.Row="4" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.BackgroundWarning}"/>
+
+                    <TextBlock Grid.Row="5" Text="明暗差の比（警告のみ）" Margin="0,3,10,3"/>
+                    <TextBox Grid.Row="5" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.RangeWarning}"/>
+
+                    <TextBlock Grid.Row="6" Text="端の引き伸ばしノイズ強度（警告のみ）" Margin="0,3,10,3"
+                               ToolTip="太陽が画角から外れたときに画像の端に現れる縞の強さ。超えると警告します"/>
+                    <TextBox Grid.Row="6" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.EdgeArtifactWarning}"/>
+
+                    <StackPanel Grid.Column="4" Grid.RowSpan="7">
+                        <CheckBox Content="警告時に音を鳴らす" IsChecked="{Binding Settings.SoundEnabled}" Margin="0,3"/>
+                        <CheckBox Content="注意でも音を鳴らす" IsChecked="{Binding Settings.SoundOnCaution}" Margin="0,3"/>
+                        <CheckBox Content="起動時に自動で監視を開始する" IsChecked="{Binding Settings.AutoStart}" Margin="0,3"/>
+                        <Grid Margin="0,6,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="警告音(wav/mp3)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox Grid.Column="1" Text="{Binding SoundFilePath, UpdateSourceTrigger=PropertyChanged}"
+                                     ToolTip="空欄の場合はWindows標準の警告音を使用します"/>
+                            <Button Grid.Column="2" Content="参照..." Margin="6,0,0,0" Click="BrowseSound_Click"/>
+                        </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <TextBlock Text="繰り返し間隔(秒)" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                            <TextBox Width="50" Text="{Binding Settings.RepeatSeconds}"/>
+                            <Button Content="音を試す" Margin="12,0,0,0" Command="{Binding TestSoundCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Expander>
+            <TextBlock Text="{Binding StatusMessage}" Margin="0,6,0,0" FontSize="11"
+                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+        </StackPanel>
+    </Grid>
+</Window>
