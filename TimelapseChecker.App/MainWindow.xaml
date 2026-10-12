@@ -48,21 +48,21 @@
 
         <!-- 状態バナー -->
         <Border Grid.Row="1" Margin="0,10,0,10" Padding="14,10" CornerRadius="3" Background="{Binding BannerBrush}">
-            <Grid>
+            <Grid x:Name="BannerGrid">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition x:Name="BannerCol2" Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{Binding BannerText}" FontSize="30" FontWeight="Bold"
+                <TextBlock x:Name="BannerTitle" Grid.Column="0" Text="{Binding BannerText}" FontSize="30" FontWeight="Bold"
                            Foreground="White" VerticalAlignment="Center" Margin="0,0,24,0"/>
-                <TextBlock Grid.Column="1" Text="{Binding ReasonText}" FontSize="13" Foreground="White"
+                <TextBlock x:Name="BannerReason" Grid.Column="1" Text="{Binding ReasonText}" FontSize="13" Foreground="White"
                            TextWrapping="Wrap" VerticalAlignment="Center"/>
                 <!-- 音が鳴っている間だけ「確認」ボタンを表示し、押した後は「確認済み」表示に切り替える -->
-                <Button Grid.Column="2" Content="確認（音を止める）" Command="{Binding AcknowledgeCommand}"
+                <Button x:Name="AckButton" Grid.Column="2" Content="確認（音を止める）" Command="{Binding AcknowledgeCommand}"
                         Visibility="{Binding CanAcknowledge, Converter={StaticResource BoolToVis}}"
                         VerticalAlignment="Center" Padding="14,8"/>
-                <TextBlock Grid.Column="2" Text="確認済み（音停止中）" FontSize="14" Foreground="White"
+                <TextBlock x:Name="AckText" Grid.Column="2" Text="確認済み（音停止中）" FontSize="14" Foreground="White"
                            Visibility="{Binding IsAcknowledged, Converter={StaticResource BoolToVis}}"
                            VerticalAlignment="Center" Margin="10,0"/>
             </Grid>
@@ -244,4 +244,5 @@
         </StackPanel>
     </Grid>
 </Window>
+
 

@@ -131,6 +131,7 @@ public partial class MainWindow : Window
             Grid.SetRow(RightPanel, 1);
             Grid.SetColumn(RightPanel, 0);
 
+            ApplyBannerLayout(true);
             MetricsBlock.Visibility = Visibility.Collapsed;
             UseLatestButton.Content = "最新を基準に";
             LayoutToggleButton.Content = "標準レイアウトに戻す";
@@ -154,6 +155,7 @@ public partial class MainWindow : Window
             Grid.SetRow(RightPanel, 0);
             Grid.SetColumn(RightPanel, 2);
 
+            ApplyBannerLayout(false);
             MetricsBlock.Visibility = Visibility.Visible;
             UseLatestButton.Content = "最新画像を基準にする";
             LayoutToggleButton.Content = "配信用レイアウト";
@@ -164,6 +166,54 @@ public partial class MainWindow : Window
             Width = 1100;
             Height = 900;
             ApplyBounds(standardBounds);
+        }
+    }
+
+    /// <summary>
+    /// 状態バナーの並び。標準: [状態][理由][確認] の3列。
+    /// 配信用（幅が狭い）: [状態][理由] の2列で、確認ボタン（確認済み表示）は右側の下段に置く。
+    /// </summary>
+    private void ApplyBannerLayout(bool stream)
+    {
+        BannerGrid.RowDefinitions.Clear();
+
+        if (stream)
+        {
+            BannerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            BannerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            BannerCol2.Width = new GridLength(0);
+
+            Grid.SetRow(BannerTitle, 0);
+            Grid.SetRowSpan(BannerTitle, 2);
+            Grid.SetRow(BannerReason, 0);
+
+            foreach (FrameworkElement el in new FrameworkElement[] { AckButton, AckText })
+            {
+                Grid.SetRow(el, 1);
+                Grid.SetColumn(el, 1);
+                el.HorizontalAlignment = HorizontalAlignment.Right;
+                el.VerticalAlignment = VerticalAlignment.Bottom;
+            }
+            AckButton.Margin = new Thickness(0, 8, 0, 0);
+            AckText.Margin = new Thickness(0, 8, 0, 0);
+        }
+        else
+        {
+            BannerCol2.Width = GridLength.Auto;
+
+            Grid.SetRow(BannerTitle, 0);
+            Grid.SetRowSpan(BannerTitle, 1);
+            Grid.SetRow(BannerReason, 0);
+
+            foreach (FrameworkElement el in new FrameworkElement[] { AckButton, AckText })
+            {
+                Grid.SetRow(el, 0);
+                Grid.SetColumn(el, 2);
+                el.HorizontalAlignment = HorizontalAlignment.Stretch;
+                el.VerticalAlignment = VerticalAlignment.Center;
+            }
+            AckButton.Margin = new Thickness(0);
+            AckText.Margin = new Thickness(10, 0, 10, 0);
         }
     }
 
