@@ -1,4 +1,4 @@
-<Window x:Class="TimelapseChecker.App.MainWindow"
+﻿<Window x:Class="TimelapseChecker.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
@@ -41,7 +41,7 @@
             <Button Grid.Row="1" Grid.Column="2" Content="指定..." Margin="6,6,0,0" Click="BrowseBaseline_Click"
                     IsEnabled="{Binding IsMonitoring}"
                     ToolTip="任意の画像を基準画像として指定し直します"/>
-            <Button Grid.Row="1" Grid.Column="3" Content="最新画像を基準にする" Margin="6,6,0,0"
+            <Button Grid.Row="1" Grid.Column="3" x:Name="UseLatestButton" Content="最新画像を基準にする" Margin="6,6,0,0"
                     Command="{Binding UseLatestAsBaselineCommand}" IsEnabled="{Binding IsMonitoring}"
                     ToolTip="現在表示中の最新画像を新しい基準にします"/>
         </Grid>
@@ -69,14 +69,14 @@
         </Border>
 
         <!-- メイン -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="2" x:Name="MainArea">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="480"/>
-                <ColumnDefinition Width="10"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="MainCol0" Width="480"/>
+                <ColumnDefinition x:Name="MainCol1" Width="10"/>
+                <ColumnDefinition x:Name="MainCol2" Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Grid Grid.Column="0">
+            <Grid Grid.Column="0" x:Name="LeftPanel">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -102,11 +102,11 @@
 
                 <TextBlock Grid.Row="2" Grid.Column="1" Margin="6,6,0,4" Text="{Binding LatestFile}"
                            TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}"/>
-                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="{Binding MetricsText}" FontFamily="Consolas" FontSize="12"
+                <TextBlock Grid.Row="3" Grid.ColumnSpan="2" x:Name="MetricsBlock" Text="{Binding MetricsText}" FontFamily="Consolas" FontSize="12"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
             </Grid>
 
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" x:Name="RightPanel">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="1.4*" MinHeight="180"/>
@@ -230,8 +230,18 @@
                     </StackPanel>
                 </Grid>
             </Expander>
-            <TextBlock Text="{Binding StatusMessage}" Margin="0,6,0,0" FontSize="11"
-                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding StatusMessage}" FontSize="11" VerticalAlignment="Center"
+                           Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap"/>
+                <Button Grid.Column="1" x:Name="LayoutToggleButton" Content="配信用レイアウト" Margin="8,0,0,0"
+                        Padding="8,2" FontSize="11" Click="LayoutToggle_Click"
+                        ToolTip="幅550px・高さ最大の配信用ウィンドウ配置に切り替えます（もう一度押すと標準に戻ります）"/>
+            </Grid>
         </StackPanel>
     </Grid>
 </Window>
+

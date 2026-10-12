@@ -49,6 +49,9 @@ public class AppSettings
 
     public bool AutoStart { get; set; } = false;
 
+    /// <summary>YouTube配信用レイアウト（幅550px・作業領域の高さいっぱいで中央に配置）で起動するか。</summary>
+    public bool StreamLayout { get; set; } = false;
+
     public CheckerThresholds Thresholds { get; set; } = new();
 }
 
