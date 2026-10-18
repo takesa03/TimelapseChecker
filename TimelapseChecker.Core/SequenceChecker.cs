@@ -1,4 +1,4 @@
-namespace TimelapseChecker.Core;
+﻿namespace TimelapseChecker.Core;
 
 /// <summary>
 /// 連続フレームを順に受け取り、直近の正常フレーム(ローリング基準)と
@@ -43,7 +43,16 @@ public sealed class SequenceChecker
     private string ArtifactReason(FrameMetrics m) =>
         $"画像の{m.EdgeArtifactSide}側に引き伸ばしノイズ（太陽が画角から外れている可能性）";
 
-    public CheckResult Evaluate(FrameMetrics m)
+    /// <summary>フレームを判定し、正常なら基準へ取り込む（監視中の通常の判定）。</summary>
+    public CheckResult Evaluate(FrameMetrics m) => EvaluateCore(m, commit: true);
+
+    /// <summary>
+    /// フレームを現在の基準に対して判定するだけで、内部の状態は変えない。
+    /// 基準画像にしようとしている画像が、エラー（注意・警告）と判定されるかの確認に使う。
+    /// </summary>
+    public CheckResult Inspect(FrameMetrics m) => EvaluateCore(m, commit: false);
+
+    private CheckResult EvaluateCore(FrameMetrics m, bool commit)
     {
         // 基準が1枚も無い間は、このフレームを基準として採用する（ノイズ付きは基準にしない）
         if (normals.Count == 0)
@@ -57,7 +66,7 @@ public sealed class SequenceChecker
                     Reasons = new[] { ArtifactReason(m) },
                 };
             }
-            Accept(m);
+            if (commit) Accept(m);
             return new CheckResult { Metrics = m, Level = CheckLevel.Normal, IsCalibrating = true };
         }
 
@@ -69,6 +78,7 @@ public sealed class SequenceChecker
         double areaRatioSession = s.Area > 0 ? m.Area / s.Area : 1;
         double shift = Math.Sqrt(Math.Pow(m.CenterX - b.CenterX, 2) + Math.Pow(m.CenterY - b.CenterY, 2)) / r0;
         double contrastRatio = b.Contrast > 0 ? m.Contrast / b.Contrast : 1;
+        double brightnessRatio = b.DiskBrightness > 0 ? m.DiskBrightness / b.DiskBrightness : 1;
         double rangeRatio = b.Range > 0 ? m.Range / b.Range : 1;
         double bgLift = m.BackgroundLevel - b.BackgroundLevel;
 
@@ -96,6 +106,11 @@ public sealed class SequenceChecker
         else if (contrastRatio < th.ContrastCaution)
             Raise(CheckLevel.Caution, $"コントラストが基準の{contrastRatio:P0}に低下");
 
+        if (brightnessRatio < th.BrightnessWarning)
+            Raise(CheckLevel.Warning, $"円盤の明るさが基準の{brightnessRatio:P0}に低下（薄雲などの可能性）");
+        else if (brightnessRatio < th.BrightnessCaution)
+            Raise(CheckLevel.Caution, $"円盤の明るさが基準の{brightnessRatio:P0}に低下");
+
         if (bgLift > th.BackgroundWarning)
             Raise(CheckLevel.Warning, $"背景が持ち上がっている（+{bgLift:P0}）");
         else if (bgLift > th.BackgroundCaution)
@@ -110,17 +125,18 @@ public sealed class SequenceChecker
         if (m.TouchesEdge && !b.TouchesEdge)
             Raise(CheckLevel.Warning, "太陽が画像の端に接触（見切れ）");
 
-        // 傾向: 面積が連続して減少中なら、閾値前でも注意
-        recentAreas.Add(m.Area);
-        if (recentAreas.Count > 3) recentAreas.RemoveAt(0);
-        if (level == CheckLevel.Normal && th.TrendDrop > 0 && recentAreas.Count == 3
-            && recentAreas[0] > recentAreas[1] && recentAreas[1] > recentAreas[2]
-            && b.Area > 0 && (recentAreas[0] - recentAreas[2]) / b.Area >= th.TrendDrop)
+        // 傾向: 面積が連続して減少中なら、閾値前でも注意（確認だけのときは、履歴を変えない）
+        var areas = commit ? recentAreas : new List<double>(recentAreas);
+        areas.Add(m.Area);
+        if (areas.Count > 3) areas.RemoveAt(0);
+        if (level == CheckLevel.Normal && th.TrendDrop > 0 && areas.Count == 3
+            && areas[0] > areas[1] && areas[1] > areas[2]
+            && b.Area > 0 && (areas[0] - areas[2]) / b.Area >= th.TrendDrop)
         {
             Raise(CheckLevel.Caution, "円盤の面積が連続して減少中");
         }
 
-        if (level == CheckLevel.Normal) Accept(m);
+        if (level == CheckLevel.Normal && commit) Accept(m);
 
         return new CheckResult
         {
@@ -131,6 +147,7 @@ public sealed class SequenceChecker
             AreaRatioSession = areaRatioSession,
             Shift = shift,
             ContrastRatio = contrastRatio,
+            BrightnessRatio = brightnessRatio,
             RangeRatio = rangeRatio,
             BackgroundLift = bgLift,
         };
@@ -158,9 +175,16 @@ public sealed class SequenceChecker
             CenterX = Med(x => x.CenterX),
             CenterY = Med(x => x.CenterY),
             Contrast = Med(x => x.Contrast),
+            DiskBrightness = Med(x => x.DiskBrightness),
             Range = Med(x => x.Range),
             BackgroundLevel = Med(x => x.BackgroundLevel),
             TouchesEdge = list.Count(x => x.TouchesEdge) * 2 > list.Count,
         };
     }
 }
+
+
+
+
+
+

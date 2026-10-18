@@ -1,4 +1,4 @@
-namespace TimelapseChecker.Core;
+﻿namespace TimelapseChecker.Core;
 
 /// <summary>1枚の画像から抽出した、絶対輝度に依存しない特徴量。</summary>
 public sealed class FrameMetrics
@@ -41,6 +41,13 @@ public sealed class FrameMetrics
     public int Width { get; init; }
     public int Height { get; init; }
 
-    /// <summary>プレビュー表示用のJPEGデータ（縮小画像）。</summary>
+    /// <summary>円盤の明るさ（円盤マスク内の平均、固定スケールの0〜255）。基準画像との比で減光を見る。</summary>
+    public double DiskBrightness { get; init; }
+
+    /// <summary>プレビュー表示用のJPEGデータ（比較用＝解析に使うグレースケール画像を縮小したもの）。</summary>
     public byte[]? PreviewJpeg { get; init; }
+
+    /// <summary>プレビュー表示用のJPEGデータ（元画像のカラーを縮小したもの）。</summary>
+    public byte[]? OriginalJpeg { get; init; }
 }
+

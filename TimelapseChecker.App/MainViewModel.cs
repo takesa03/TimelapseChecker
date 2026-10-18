@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TimelapseChecker.App.Services;
@@ -56,11 +59,160 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string metricsText = "";
 
+    // 画面に出しているプレビュー（「元画像で表示」の切り替えに応じて、下の4つのどれかを指す）
     [ObservableProperty]
     private ImageSource? previewImage;
 
     [ObservableProperty]
     private ImageSource? baselinePreview;
+
+    // 比較用（解析に使うグレースケール）と元画像（カラー）の両方を保持し、表示だけを切り替える
+    private ImageSource? baselineGray, baselineOriginal, latestGray, latestOriginal;
+
+    /// <summary>true: 元画像（カラー）で表示、false: 比較用（解析用のグレースケール）で表示。</summary>
+    public bool ShowOriginalImage
+    {
+        get => Settings.ShowOriginalImage;
+        set
+        {
+            if (Settings.ShowOriginalImage == value) return;
+            Settings.ShowOriginalImage = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(PreviewModeText));
+            UpdatePreviewSelection();
+            SaveSettings();
+        }
+    }
+
+    public string PreviewModeText => ShowOriginalImage ? "元画像" : "比較用";
+
+    private void UpdatePreviewSelection()
+    {
+        BaselinePreview = ShowOriginalImage ? baselineOriginal : baselineGray;
+        PreviewImage = ShowOriginalImage ? latestOriginal : latestGray;
+        RefreshEnlarged();
+    }
+
+    // ---- 拡大表示（基準画像・最新画像を、ウィンドウいっぱいに表示する） ----
+    private enum EnlargeTarget { None, Baseline, Latest }
+    private EnlargeTarget enlargeTarget = EnlargeTarget.None;
+
+    [ObservableProperty]
+    private ImageSource? enlargedImage;
+
+    [ObservableProperty]
+    private string enlargedTitle = "";
+
+    [ObservableProperty]
+    private bool isEnlarged;
+
+    private string latestName = "";
+    private string baselineName = "";
+
+    [RelayCommand]
+    private void EnlargeBaseline() => Enlarge(EnlargeTarget.Baseline);
+
+    [RelayCommand]
+    private void EnlargeLatest() => Enlarge(EnlargeTarget.Latest);
+
+    [RelayCommand]
+    private void CloseEnlarged() => Enlarge(EnlargeTarget.None);
+
+    private void Enlarge(EnlargeTarget target)
+    {
+        enlargeTarget = target;
+        RefreshEnlarged();
+    }
+
+    private void RefreshEnlarged()
+    {
+        ImageSource? img = enlargeTarget switch
+        {
+            EnlargeTarget.Baseline => BaselinePreview,
+            EnlargeTarget.Latest => PreviewImage,
+            _ => null,
+        };
+        if (img == null)
+        {
+            enlargeTarget = EnlargeTarget.None;
+            IsEnlarged = false;
+            EnlargedImage = null;
+            EnlargedTitle = "";
+            return;
+        }
+        EnlargedImage = img;
+        EnlargedTitle = (enlargeTarget == EnlargeTarget.Baseline ? "基準画像　" + baselineName : "最新画像　" + latestName)
+                        + $"　（{PreviewModeText}。クリックまたは Esc で閉じる）";
+        IsEnlarged = true;
+    }
+
+    // ---- 画像のカウント表示 ----
+    /// <summary>監視フォルダに含まれるTIFFの枚数（大きく表示）。既存の画像も含む。</summary>
+    [ObservableProperty]
+    private int totalImages;
+
+    /// <summary>異常（注意・警告）の件数（小さく表示）。判定履歴にリストアップされている件数。</summary>
+    [ObservableProperty]
+    private string errorCountText = "異常 0 件（注意 0・警告 0）";
+
+    private DispatcherTimer? fileCountTimer;
+    private bool fileCountBusy;
+
+    private void InitializeCounts()
+    {
+        // 履歴の増減に合わせて、異常の件数を数え直す
+        History.CollectionChanged += (_, _) => UpdateErrorCount();
+
+        // 監視フォルダのTIFF枚数は、定期的に数え直す（撮影ソフトが新しい画像を出し続けるため）
+        fileCountTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        fileCountTimer.Tick += (_, _) => RefreshFileCount();
+        fileCountTimer.Start();
+        RefreshFileCount();
+    }
+
+    /// <summary>監視フォルダ直下の対象ファイル（既定は .tif/.tiff）の枚数を数える。フォルダが多くても画面が止まらないよう別スレッドで行う。</summary>
+    public async void RefreshFileCount()
+    {
+        if (fileCountBusy) return;
+
+        string folder = Settings.WatchFolder;
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            TotalImages = 0;
+            return;
+        }
+
+        var exts = Settings.CountExtensions
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(e => e.StartsWith('.') ? e : "." + e)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        fileCountBusy = true;
+        try
+        {
+            int n = await Task.Run(() => Directory.EnumerateFiles(folder).Count(f => exts.Contains(Path.GetExtension(f))));
+            TotalImages = n;
+        }
+        catch
+        {
+            // フォルダを読めない間は、前回の値のままにする
+        }
+        finally
+        {
+            fileCountBusy = false;
+        }
+    }
+
+    private void UpdateErrorCount()
+    {
+        int caution = 0, warning = 0;
+        foreach (var item in History)
+        {
+            if (item.LevelText == "注意") caution++;
+            else if (item.LevelText == "警告") warning++;
+        }
+        ErrorCountText = $"異常 {caution + warning} 件（注意 {caution}・警告 {warning}）";
+    }
 
     [ObservableProperty]
     private string statusMessage = "監視フォルダを指定して「監視開始」を押してください。";
@@ -87,9 +239,30 @@ public partial class MainViewModel : ObservableObject
             if (Settings.WatchFolder == value) return;
             Settings.WatchFolder = value;
             OnPropertyChanged();
+            RefreshFileCount();
             // 次回起動時に復元できるよう、変更のたびに保存する
             SaveSettings();
         }
+    }
+
+    private string monitoredFolder = "";
+
+    /// <summary>
+    /// フォルダ欄の入力確定（Enter／フォーカス移動／参照）で呼ぶ。監視中にフォルダが変わっていたら、
+    /// 新しいフォルダで監視し直す（存在しないフォルダなら、そのままにしてメッセージを出す）。
+    /// </summary>
+    public void ApplyWatchFolderChange()
+    {
+        if (!IsMonitoring || string.Equals(monitoredFolder, Settings.WatchFolder, StringComparison.OrdinalIgnoreCase)) return;
+
+        if (!Directory.Exists(Settings.WatchFolder))
+        {
+            StatusMessage = "入力したフォルダが存在しないため、監視中のフォルダは変更しません。";
+            return;
+        }
+
+        Stop();
+        Start();
     }
 
     [ObservableProperty]
@@ -119,6 +292,7 @@ public partial class MainViewModel : ObservableObject
         BannerBrush = IdleBrush;
         alarm.Error += msg => StatusMessage = msg;
         InitializeGraph();
+        InitializeCounts();
     }
 
     private static Brush Freeze(SolidColorBrush b)
@@ -140,14 +314,22 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ToggleMonitoring()
     {
-        if (IsMonitoring) Stop(); else Start();
+        if (IsMonitoring) Stop(); else Start(userInitiated: true);
     }
 
-    private void Start()
+    /// <summary>操作（ボタン）に対するエラーは、画面下部ではなく警告ダイアログで知らせる。</summary>
+    private static void ShowWarning(string message)
+    {
+        MessageBox.Show(Application.Current.MainWindow, message, "Timelapse Checker", MessageBoxButton.OK, MessageBoxImage.Warning);
+    }
+
+    /// <param name="userInitiated">「監視開始」ボタンなど、利用者の操作による開始か（失敗を警告ダイアログで知らせる）。</param>
+    private void Start(bool userInitiated = false)
     {
         if (!Directory.Exists(Settings.WatchFolder))
         {
-            StatusMessage = "監視フォルダが存在しません。";
+            if (userInitiated) ShowWarning("監視フォルダが存在しません。\nフォルダを指定してから、監視を開始してください。");
+            else StatusMessage = "監視フォルダが存在しません。";
             return;
         }
 
@@ -158,12 +340,14 @@ public partial class MainViewModel : ObservableObject
             monitor.Message += msg => Application.Current.Dispatcher.BeginInvoke(() => StatusMessage = msg);
             monitor.BaselineChanged += OnBaselineChanged;
             monitor.Start(Settings.WatchFolder);
+            monitoredFolder = Settings.WatchFolder;
         }
         catch (Exception ex)
         {
-            StatusMessage = $"監視を開始できませんでした: {ex.Message}";
             monitor?.Dispose();
             monitor = null;
+            if (userInitiated) ShowWarning($"監視を開始できませんでした。\n{ex.Message}");
+            else StatusMessage = $"監視を開始できませんでした: {ex.Message}";
             return;
         }
 
@@ -175,8 +359,10 @@ public partial class MainViewModel : ObservableObject
         ReasonText = "";
         BaselineText = "（フォルダ内の最初の画像を使用 / 画像が無い場合は最初に出力された画像）";
         latestPath = "";
-        BaselinePreview = null;
-        PreviewImage = null;
+        baselineGray = baselineOriginal = latestGray = latestOriginal = null;
+        baselineName = latestName = "";
+        UpdatePreviewSelection();
+        RefreshFileCount();
         ResetGraph();
         StatusMessage = $"監視中: {Settings.WatchFolder}";
     }
@@ -189,7 +375,10 @@ public partial class MainViewModel : ObservableObject
             string path = baseline.FilePath;
             BaselineText = path;
             // 指定した画像が意図通りか確認できるよう、基準画像のプレビューを更新する
-            if (baseline.PreviewJpeg != null) BaselinePreview = ToImage(baseline.PreviewJpeg);
+            baselineName = Path.GetFileName(path);
+            baselineGray = baseline.PreviewJpeg != null ? ToImage(baseline.PreviewJpeg) : null;
+            baselineOriginal = baseline.OriginalJpeg != null ? ToImage(baseline.OriginalJpeg) : null;
+            UpdatePreviewSelection();
             Level = CheckLevel.Normal;
             BannerText = "監視中";
             BannerBrush = NormalBrush;
@@ -205,7 +394,29 @@ public partial class MainViewModel : ObservableObject
     public async void SetBaselineFile(string path)
     {
         if (monitor == null) return;
-        await monitor.SetBaselineAsync(path);
+        // 「指定...」「最新を基準に」の操作。結果は、画面下部ではなくダイアログで知らせる
+        var candidate = await monitor.PrepareBaselineAsync(path);
+        if (candidate.HardError != null)
+        {
+            ShowWarning(candidate.HardError);
+            return;
+        }
+
+        // エラー（注意・警告）と判定される画像を、うっかり基準にしないよう確認する（既定は「いいえ」）。
+        // 太陽の位置を直した直後など、意図して新しい位置を基準にしたい場合は「はい」で確定できる。
+        var inspection = candidate.Inspection;
+        if (inspection != null && inspection.Level != CheckLevel.Normal && candidate.Metrics != null)
+        {
+            string level = inspection.Level == CheckLevel.Warning ? "警告" : "注意";
+            string reasons = string.Join("\n", inspection.Reasons.Select(x => "・" + x));
+            var answer = MessageBox.Show(Application.Current.MainWindow,
+                $"{Path.GetFileName(path)} は、現在の基準画像に対して「{level}」と判定される、エラーのある画像です。\n\n{reasons}\n\n" +
+                "エラーのある画像を基準にすると、以後の判定がずれます。\nそれでも基準画像にしますか？",
+                "Timelapse Checker", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (answer != MessageBoxResult.Yes) return;
+        }
+
+        if (candidate.Metrics != null) monitor.CommitBaseline(candidate.Metrics);
     }
 
     private void Stop()
@@ -243,7 +454,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (monitor == null || string.IsNullOrEmpty(latestPath))
         {
-            StatusMessage = "基準にできる最新画像がまだありません。";
+            ShowWarning("基準にできる最新画像がまだありません。\n画像が出力されてから、もう一度押してください。");
             return;
         }
         SetBaselineFile(latestPath);
@@ -284,19 +495,25 @@ public partial class MainViewModel : ObservableObject
 
         string detail = r.IsCalibrating
             ? "基準フレーム"
-            : $"面積 {r.AreaRatio:P0} / ずれ {r.Shift:F2} / コントラスト {r.ContrastRatio:P0} / 背景 {r.BackgroundLift:+0.00;-0.00;0.00}";
+            : $"面積 {r.AreaRatio:P0} / ずれ {r.Shift:F2} / 明るさ {r.BrightnessRatio:P0} / コントラスト {r.ContrastRatio:P0} / 背景 {r.BackgroundLift:+0.00;-0.00;0.00}";
 
         var sb = new StringBuilder();
         sb.AppendLine($"面積比（直近基準）: {r.AreaRatio:P1}");
         sb.AppendLine($"面積比（開始時基準）: {r.AreaRatioSession:P1}");
         sb.AppendLine($"重心ずれ（半径比）: {r.Shift:F3}");
+        sb.AppendLine($"明るさ比: {r.BrightnessRatio:P1}");
         sb.AppendLine($"コントラスト比: {r.ContrastRatio:P1}");
         sb.AppendLine($"明暗差の比: {r.RangeRatio:P1}");
         sb.AppendLine($"背景の持ち上がり: {r.BackgroundLift:+0.000;-0.000;0.000}");
         sb.Append($"画像端への接触: {(m.TouchesEdge ? "あり" : "なし")}");
         MetricsText = sb.ToString();
 
-        if (m.PreviewJpeg != null) PreviewImage = ToImage(m.PreviewJpeg);
+        latestName = name;
+        latestGray = m.PreviewJpeg != null ? ToImage(m.PreviewJpeg) : null;
+        latestOriginal = m.OriginalJpeg != null ? ToImage(m.OriginalJpeg) : null;
+        UpdatePreviewSelection();
+
+        RefreshFileCount();
 
         History.Insert(0, new ResultItem
         {
@@ -355,7 +572,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            const string header = "time,file,level,area_ratio,area_ratio_session,shift,contrast_ratio,range_ratio,bg_lift,edge,edge_artifact,edge_artifact_side,edge_artifact_run,reasons";
+            const string header = "time,file,level,area_ratio,area_ratio_session,shift,brightness_ratio,contrast_ratio,range_ratio,bg_lift,edge,edge_artifact,edge_artifact_side,edge_artifact_run,reasons";
             string path = Path.Combine(AppPaths.LogDirectory, $"{now:yyyyMMdd}.csv");
 
             // 列構成が異なる旧形式のファイルが残っている場合は、列がずれないよう退避して新しいファイルを作る
@@ -383,6 +600,7 @@ public partial class MainViewModel : ObservableObject
                 r.AreaRatio.ToString("F3"),
                 r.AreaRatioSession.ToString("F3"),
                 r.Shift.ToString("F3"),
+                r.BrightnessRatio.ToString("F3"),
                 r.ContrastRatio.ToString("F3"),
                 r.RangeRatio.ToString("F3"),
                 r.BackgroundLift.ToString("F3"),
@@ -410,4 +628,30 @@ public partial class MainViewModel : ObservableObject
         return bmp;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

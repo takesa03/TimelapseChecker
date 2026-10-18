@@ -1,4 +1,4 @@
-namespace TimelapseChecker.Core;
+﻿namespace TimelapseChecker.Core;
 
 /// <summary>判定閾値。すべて基準フレームに対する相対値。</summary>
 public sealed class CheckerThresholds
@@ -17,6 +17,11 @@ public sealed class CheckerThresholds
     public double ContrastCaution { get; set; } = 0.8;
     /// <summary>コントラスト比がこの値を下回ると「警告」。</summary>
     public double ContrastWarning { get; set; } = 0.5;
+
+    /// <summary>円盤の明るさが基準画像に対してこの比を下回ると「注意」（薄雲などによる全体の減光）。</summary>
+    public double BrightnessCaution { get; set; } = 0.90;
+    /// <summary>円盤の明るさが基準画像に対してこの比を下回ると「警告」。</summary>
+    public double BrightnessWarning { get; set; } = 0.75;
 
     /// <summary>背景持ち上がり（基準からの増加分）がこの値を超えると「注意」。</summary>
     public double BackgroundCaution { get; set; } = 0.10;
@@ -38,3 +43,4 @@ public sealed class CheckerThresholds
     /// <summary>ローリング基準に使う直近の正常フレーム数。</summary>
     public int BaselineWindow { get; set; } = 10;
 }
+

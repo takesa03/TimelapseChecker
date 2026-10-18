@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -83,17 +83,22 @@ public sealed class FolderMonitor : IDisposable
         poller = Task.Run(() => PollLoop(token));
     }
 
-    /// <summary>指定した画像を基準に設定し直す。</summary>
-    /// <param name="quiet">自動選択中は、ノイズ等で採用しなかった旨のメッセージを出さない。</param>
-    public async Task<bool> SetBaselineAsync(string path, bool quiet = false)
+    /// <summary>基準画像の設定結果。失敗時は、利用者に見せるメッセージを持つ。</summary>
+    public sealed record BaselineResult(bool Ok, string? Error);
+
+    /// <summary>
+    /// 指定した画像を基準に設定し直す（利用者の操作用）。失敗したときは、理由を結果で返す
+    /// （画面に出すかどうかは呼び出し側が決める。ダイアログで知らせる想定）。
+    /// </summary>
+    public async Task<BaselineResult> TrySetBaselineAsync(string path)
     {
         try
         {
+            string name = Path.GetFileName(path);
             var metrics = await Task.Run(() => FrameAnalyzer.Analyze(path));
             if (metrics == null)
             {
-                if (!quiet) Message?.Invoke($"基準画像を読み込めませんでした: {Path.GetFileName(path)}");
-                return false;
+                return new BaselineResult(false, $"画像を読み込めませんでした。\n{name}");
             }
 
             bool ok;
@@ -101,18 +106,78 @@ public sealed class FolderMonitor : IDisposable
             if (!ok)
             {
                 // 端に引き伸ばしノイズがある画像を基準にすると、以後の判定がずれるため採用しない
-                Message?.Invoke($"{Path.GetFileName(path)} は画像の{metrics.EdgeArtifactSide}側にノイズがあるため基準にしません。");
-                return false;
+                return new BaselineResult(false,
+                    $"{name} は、画像の{metrics.EdgeArtifactSide}側に引き伸ばしノイズ（太陽が画角から外れている状態）があるため、基準画像にできません。\n別の画像を選んでください。");
             }
 
             BaselineChanged?.Invoke(metrics);
-            return true;
+            return new BaselineResult(true, null);
         }
         catch (Exception ex)
         {
-            Message?.Invoke($"基準画像の設定に失敗しました: {ex.Message}");
-            return false;
+            return new BaselineResult(false, $"基準画像の設定に失敗しました。\n{ex.Message}");
         }
+    }
+
+    /// <summary>基準画像にしようとしている画像の、事前の確認結果。</summary>
+    /// <param name="HardError">基準にできない理由（読めない・端のノイズ）。nullなら基準にできる。</param>
+    /// <param name="Inspection">現在の基準に対する判定。注意・警告なら、エラーのある画像である。</param>
+    public sealed record BaselineCandidate(FrameMetrics? Metrics, string? HardError, CheckResult? Inspection);
+
+    /// <summary>
+    /// 画像を解析して、基準にできるかを確認する（基準はまだ変えない）。
+    /// エラーのある画像かどうか（Inspection）は、呼び出し側が利用者に確認するために使う。
+    /// </summary>
+    public async Task<BaselineCandidate> PrepareBaselineAsync(string path)
+    {
+        try
+        {
+            string name = Path.GetFileName(path);
+            var metrics = await Task.Run(() => FrameAnalyzer.Analyze(path));
+            if (metrics == null)
+                return new BaselineCandidate(null, $"画像を読み込めませんでした。\n{name}", null);
+
+            CheckResult inspection;
+            bool artifact;
+            lock (checker)
+            {
+                artifact = checker.HasEdgeArtifact(metrics);
+                inspection = checker.Inspect(metrics);
+            }
+            if (artifact)
+            {
+                return new BaselineCandidate(metrics,
+                    $"{name} は、画像の{metrics.EdgeArtifactSide}側に引き伸ばしノイズ（太陽が画角から外れている状態）があるため、基準画像にできません。\n別の画像を選んでください。",
+                    inspection);
+            }
+            return new BaselineCandidate(metrics, null, inspection);
+        }
+        catch (Exception ex)
+        {
+            return new BaselineCandidate(null, $"基準画像の設定に失敗しました。\n{ex.Message}", null);
+        }
+    }
+
+    /// <summary>確認済みの画像を、基準画像として確定する。</summary>
+    public bool CommitBaseline(FrameMetrics metrics)
+    {
+        bool ok;
+        lock (checker) ok = checker.SetBaseline(metrics);
+        if (ok) BaselineChanged?.Invoke(metrics);
+        return ok;
+    }
+
+    /// <summary>
+    /// 基準画像の自動選択用。基準にできなかった理由は、画面下部のメッセージとして通知する
+    /// （自動処理なので、ダイアログは出さない）。
+    /// </summary>
+    /// <param name="quiet">読み込めなかった場合のメッセージを出さない。</param>
+    public async Task<bool> SetBaselineAsync(string path, bool quiet = false)
+    {
+        var r = await TrySetBaselineAsync(path);
+        if (!r.Ok && !quiet && r.Error != null) Message?.Invoke(r.Error.Replace("\n", " "));
+        else if (!r.Ok && quiet && r.Error != null && r.Error.Contains("ノイズ")) Message?.Invoke(r.Error.Replace("\n", " "));
+        return r.Ok;
     }
 
     private bool IsTarget(string path) => extensions.Contains(Path.GetExtension(path));
@@ -213,3 +278,5 @@ public sealed class FolderMonitor : IDisposable
         cts.Dispose();
     }
 }
+
+

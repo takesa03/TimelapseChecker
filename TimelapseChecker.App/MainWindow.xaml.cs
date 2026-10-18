@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -14,9 +14,6 @@ public partial class MainWindow : Window
 {
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19;
-
-    // YouTube配信用レイアウトのウィンドウ幅（物理ピクセル）。OBSで画面の一部を切り出して配信する想定
-    private const double StreamWindowWidthPx = 550;
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int pvAttribute, int cbAttribute);
@@ -54,6 +51,8 @@ public partial class MainWindow : Window
             // グラフはウィンドウが実サイズを持ってから初期化する
             viewModel.RefreshGraph();
             viewModel.StartIfConfigured();
+            ScrollToEnd(FolderBox);
+            ScrollToEnd(BaselineBox);
         };
     }
 
@@ -132,9 +131,12 @@ public partial class MainWindow : Window
             Grid.SetColumn(RightPanel, 0);
 
             ApplyBannerLayout(true);
+            ApplySettingsLayout(true);
             MetricsBlock.Visibility = Visibility.Collapsed;
             UseLatestButton.Content = "最新を基準に";
-            LayoutToggleButton.Content = "標準レイアウトに戻す";
+            LayoutToggleButton.Content = "標準";
+            LayoutToggleButton.ToolTip = "標準レイアウトに戻します";
+            viewModel.CompactGraph = true;
 
             // 高DPI（150%等）では550pxが400DIPを下回るため、最小幅は配信幅より小さく取る
             MinWidth = 250;
@@ -156,9 +158,12 @@ public partial class MainWindow : Window
             Grid.SetColumn(RightPanel, 2);
 
             ApplyBannerLayout(false);
+            ApplySettingsLayout(false);
             MetricsBlock.Visibility = Visibility.Visible;
             UseLatestButton.Content = "最新画像を基準にする";
-            LayoutToggleButton.Content = "配信用レイアウト";
+            LayoutToggleButton.Content = "配信用";
+            LayoutToggleButton.ToolTip = "配信用レイアウト（設定ファイル app_settings.json の StreamWindowWidth／StreamWindowHeight のサイズ）に切り替えます";
+            viewModel.CompactGraph = false;
 
             MinWidth = 820;
             MinHeight = 520;
@@ -183,19 +188,28 @@ public partial class MainWindow : Window
             BannerGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             BannerCol2.Width = new GridLength(0);
 
+            // 左列を2段にする: 上段=状態（「警告」など）、下段=確認ボタン（確認済み表示）。
+            // 右列は理由のメッセージ全体で使う（2段にまたがる）。
             Grid.SetRow(BannerTitle, 0);
-            Grid.SetRowSpan(BannerTitle, 2);
+            Grid.SetRowSpan(BannerTitle, 1);
             Grid.SetRow(BannerReason, 0);
+            Grid.SetRowSpan(BannerReason, 2);
+
+            // 左列は「警告」の文字の幅に合わせて最小限にし、右のメッセージの幅をできるだけ広く取る
+            BannerTitle.Margin = new Thickness(0, 0, 12, 0);
+            BannerCol0.MinWidth = 0;
 
             foreach (FrameworkElement el in new FrameworkElement[] { AckButton, AckText })
             {
                 Grid.SetRow(el, 1);
-                Grid.SetColumn(el, 1);
-                el.HorizontalAlignment = HorizontalAlignment.Right;
-                el.VerticalAlignment = VerticalAlignment.Bottom;
+                Grid.SetColumn(el, 0);
+                el.VerticalAlignment = VerticalAlignment.Center;
             }
-            AckButton.Margin = new Thickness(0, 8, 0, 0);
-            AckText.Margin = new Thickness(0, 8, 0, 0);
+            // ボタンは「警告」の文字の幅いっぱいに広げる
+            AckButton.HorizontalAlignment = HorizontalAlignment.Stretch;
+            AckText.HorizontalAlignment = HorizontalAlignment.Left;
+            AckButton.Margin = new Thickness(0, 6, 12, 0);
+            AckText.Margin = new Thickness(0, 6, 12, 0);
         }
         else
         {
@@ -204,6 +218,9 @@ public partial class MainWindow : Window
             Grid.SetRow(BannerTitle, 0);
             Grid.SetRowSpan(BannerTitle, 1);
             Grid.SetRow(BannerReason, 0);
+            Grid.SetRowSpan(BannerReason, 1);
+            BannerTitle.Margin = new Thickness(0, 0, 24, 0);
+            BannerCol0.MinWidth = 0;
 
             foreach (FrameworkElement el in new FrameworkElement[] { AckButton, AckText })
             {
@@ -217,19 +234,61 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 判定設定の並び。標準: 閾値の表の右側にオプション（音など）を置く。
+    /// 配信用（幅が狭い）: オプションを閾値の表の下に回して、右にはみ出さないようにする。
+    /// </summary>
+    private void ApplySettingsLayout(bool stream)
+    {
+        if (stream)
+        {
+            SettingsCol3.Width = new GridLength(0);
+            SettingsCol4.Width = new GridLength(0);
+            Grid.SetRow(SettingsOptions, 8);
+            Grid.SetRowSpan(SettingsOptions, 1);
+            Grid.SetColumn(SettingsOptions, 0);
+            Grid.SetColumnSpan(SettingsOptions, 5);
+            SettingsOptions.Margin = new Thickness(0, 10, 0, 0);
+            SettingsScroll.MaxHeight = 360;
+        }
+        else
+        {
+            SettingsCol3.Width = new GridLength(30);
+            SettingsCol4.Width = new GridLength(1, GridUnitType.Star);
+            Grid.SetRow(SettingsOptions, 0);
+            Grid.SetRowSpan(SettingsOptions, 8);
+            Grid.SetColumn(SettingsOptions, 4);
+            Grid.SetColumnSpan(SettingsOptions, 1);
+            SettingsOptions.Margin = new Thickness(0);
+            SettingsScroll.MaxHeight = 520;
+        }
+    }
+
     private void PlaceStreamWindow()
     {
         WindowState = WindowState.Normal;
 
-        // 550pxは物理ピクセルなので、DPIスケーリング（125%等）に合わせてDIPへ換算する
+        // サイズは設定ファイル（app_settings.json の StreamWindowWidth／StreamWindowHeight）で決める。
+        // 物理ピクセル指定なので、DPIスケーリング（125%等）に合わせてDIPへ換算する。
+        // 高さが0以下なら、タスクバーを除いた作業領域の高さいっぱいにする。
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
-        double width = StreamWindowWidthPx / (scale > 0 ? scale : 1.0);
-
-        // 作業領域 = タスクバーを除いた画面領域
+        if (scale <= 0) scale = 1.0;
         var work = SystemParameters.WorkArea;
+
+        double width = viewModel.Settings.StreamWindowWidth > 0
+            ? viewModel.Settings.StreamWindowWidth / scale
+            : 550 / scale;
+        double height = viewModel.Settings.StreamWindowHeight > 0
+            ? viewModel.Settings.StreamWindowHeight / scale
+            : work.Height;
+
+        // 作業領域（タスクバーを除く）に収まるようにする
+        width = Math.Min(width, work.Width);
+        height = Math.Min(height, work.Height);
+
         WindowStartupLocation = WindowStartupLocation.Manual;
         Width = width;
-        Height = work.Height;
+        Height = height;
         Left = work.Left + (work.Width - width) / 2;
         Top = work.Top;
     }
@@ -276,7 +335,62 @@ public partial class MainWindow : Window
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog { Title = "タイムラプスの出力フォルダを選択" };
         if (Directory.Exists(viewModel.WatchFolder)) dialog.InitialDirectory = viewModel.WatchFolder;
-        if (dialog.ShowDialog(this) == true) viewModel.WatchFolder = dialog.FolderName;
+        if (dialog.ShowDialog(this) == true)
+        {
+            viewModel.WatchFolder = dialog.FolderName;
+            viewModel.ApplyWatchFolderChange();
+        }
+    }
+
+    // ---- パス欄: 長いパスでも末尾（フォルダ名側）が見えるよう、カーソルを右端に寄せる ----
+    private static void ScrollToEnd(TextBox box)
+    {
+        box.Dispatcher.BeginInvoke(new Action(() =>
+        {
+            box.CaretIndex = box.Text.Length;
+            box.ScrollToHorizontalOffset(double.MaxValue);
+        }), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void BaselineExpander_Expanded(object sender, RoutedEventArgs e)
+    {
+        // 展開したときに、基準画像のパスの末尾が見えるようにする
+        ScrollToEnd(BaselineBox);
+    }
+
+    private void PathBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        // 入力中は動かさず、編集していないときだけ右端へ寄せる
+        if (sender is TextBox box && !box.IsKeyboardFocusWithin) ScrollToEnd(box);
+    }
+
+    private void FolderBox_LostKeyboardFocus(object sender, System.Windows.Input.KeyboardFocusChangedEventArgs e)
+    {
+        // 監視中にフォルダを書き換えていた場合は、新しいフォルダで監視し直す
+        viewModel.ApplyWatchFolderChange();
+        ScrollToEnd(FolderBox);
+    }
+
+    private void FolderBox_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            viewModel.ApplyWatchFolderChange();
+            ScrollToEnd(FolderBox);
+            e.Handled = true;
+        }
+    }
+
+    // Esc で拡大表示を閉じる
+    protected override void OnPreviewKeyDown(System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape && viewModel.IsEnlarged)
+        {
+            viewModel.CloseEnlargedCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        base.OnPreviewKeyDown(e);
     }
 
     private void BrowseBaseline_Click(object sender, RoutedEventArgs e)
@@ -300,3 +414,19 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) viewModel.SoundFilePath = dialog.FileName;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text.Json;
 using TimelapseChecker.Core;
@@ -49,8 +49,18 @@ public class AppSettings
 
     public bool AutoStart { get; set; } = false;
 
-    /// <summary>YouTube配信用レイアウト（幅550px・作業領域の高さいっぱいで中央に配置）で起動するか。</summary>
+    /// <summary>YouTube配信用レイアウトで起動するか。</summary>
     public bool StreamLayout { get; set; } = false;
+
+    /// <summary>配信用レイアウトのウィンドウサイズ（物理ピクセル）。1920x1080（タスクバー48px）で幅646・高さ1032。0以下の高さは作業領域の高さいっぱい。</summary>
+    public int StreamWindowWidth { get; set; } = 646;
+    public int StreamWindowHeight { get; set; } = 1032;
+
+    /// <summary>画面の「撮影 N 枚」に数える、監視フォルダ内のファイルの拡張子（セミコロン区切り）。</summary>
+    public string CountExtensions { get; set; } = ".tif;.tiff";
+
+    /// <summary>基準画像・最新画像のプレビューを元画像（カラー）で表示するか。falseなら比較用（解析に使うグレースケール）。</summary>
+    public bool ShowOriginalImage { get; set; } = true;
 
     public CheckerThresholds Thresholds { get; set; } = new();
 }
@@ -101,3 +111,5 @@ public class JsonStore<T> where T : class, new()
         }
     }
 }
+
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Threading;
@@ -22,6 +22,19 @@ public partial class MainViewModel
 
     private readonly List<GraphPoint> graphPoints = new();
     private DispatcherTimer? graphTimer;
+
+    /// <summary>幅が狭い配信用レイアウトのときtrue。横軸の罫線・ラベルを間引く。</summary>
+    public bool CompactGraph
+    {
+        get => compactGraph;
+        set
+        {
+            if (compactGraph == value) return;
+            compactGraph = value;
+            RefreshGraph();
+        }
+    }
+    private bool compactGraph;
 
     [ObservableProperty]
     private ISeries[] areaSeries = Array.Empty<ISeries>();
@@ -100,7 +113,7 @@ public partial class MainViewModel
             pts.Select(p => new DateTimePoint(p.Time, p.Shift)).ToArray(),
             from, now, th.ShiftCaution, th.ShiftWarning);
 
-        var separators = ComputeSeparators(from, now);
+        var separators = ComputeSeparators(from, now, TimeSpan.FromMinutes(CompactGraph ? 10 : 5));
 
         Axis MakeTimeAxis() => new()
         {
@@ -112,6 +125,8 @@ public partial class MainViewModel
             CustomSeparators = separators,
             LabelsPaint = NewAxisLabelPaint(),
             SeparatorsPaint = NewAxisSeparatorPaint(),
+            // 既定の文字サイズ(16)だとグラフからはみ出すため小さくする
+            TextSize = AxisTextSize,
         };
 
         AreaXAxes = new[] { MakeTimeAxis() };
@@ -128,6 +143,8 @@ public partial class MainViewModel
                 NamePaint = NewAxisLabelPaint(),
                 LabelsPaint = NewAxisLabelPaint(),
                 SeparatorsPaint = NewAxisSeparatorPaint(),
+                TextSize = AxisTextSize,
+                NameTextSize = AxisNameTextSize,
                 MinLimit = 0,
                 MaxLimit = areaMax,
             },
@@ -137,10 +154,12 @@ public partial class MainViewModel
         {
             new Axis
             {
-                Name = "重心ずれ（半径比）",
+                Name = "ずれ(半径比)",
                 NamePaint = NewAxisLabelPaint(),
                 LabelsPaint = NewAxisLabelPaint(),
                 SeparatorsPaint = NewAxisSeparatorPaint(),
+                TextSize = AxisTextSize,
+                NameTextSize = AxisNameTextSize,
                 MinLimit = 0,
                 MaxLimit = shiftMax,
             },
@@ -176,10 +195,12 @@ public partial class MainViewModel
         };
     }
 
-    private static List<double> ComputeSeparators(DateTime from, DateTime to)
+    private double AxisTextSize => CompactGraph ? 10 : 11;
+    private double AxisNameTextSize => CompactGraph ? 10 : 12;
+
+    private static List<double> ComputeSeparators(DateTime from, DateTime to, TimeSpan step)
     {
         var list = new List<double>();
-        var step = TimeSpan.FromMinutes(5);
         var midnight = to.Date;
         double index = Math.Floor((from - midnight).Ticks / (double)step.Ticks);
         var cursor = midnight + TimeSpan.FromTicks((long)(index * step.Ticks));
@@ -191,3 +212,9 @@ public partial class MainViewModel
         return list;
     }
 }
+
+
+
+
+
+

@@ -3,18 +3,25 @@ using OpenCvSharp;
 namespace TimelapseChecker.Core;
 
 /// <summary>
-/// 画像を読み込み、太陽円盤の面積・位置・コントラスト等を抽出する。
-/// 閾値はすべてフレーム自身の輝度分布(背景〜明部)に対する相対値で決めるため、
-/// 露出・ゲイン・色味が撮影ごとに変わっても影響を受けにくい。
+/// 画像を読み込み、太陽円盤の面積・位置・明るさ・コントラスト等を抽出する。
+/// 円盤の切り出し閾値はフレーム自身の輝度分布(背景〜明部)に対する相対値で決める。
+/// 一方、明るさそのものは「基準画像との比」で見るため、ビット深度の変換は
+/// フレームごとの正規化ではなく<b>固定スケール</b>で行う（16bit→8bitは1/257）。
 /// </summary>
 public static class FrameAnalyzer
 {
+    /// <summary>拡大表示にも使うプレビュー画像の幅。</summary>
+    public const int PreviewWidth = 1100;
+
     public static FrameMetrics? Analyze(string path, int analysisWidth = 580, bool withPreview = true)
     {
-        using var src = Cv2.ImRead(path, ImreadModes.Grayscale | ImreadModes.AnyDepth);
+        using var src = Cv2.ImRead(path, ImreadModes.Unchanged);
         if (src.Empty()) return null;
 
-        using var gray8 = ToByte(src);
+        using var color = ToBgr(src);
+        using var gray = new Mat();
+        Cv2.CvtColor(color, gray, ColorConversionCodes.BGR2GRAY);
+        using var gray8 = ToByte(gray);
         var edges = EdgeRuns(gray8);
 
         Size size = gray8.Width > analysisWidth
@@ -43,7 +50,7 @@ public static class FrameAnalyzer
         }
 
         int area = Cv2.CountNonZero(mask);
-        double cx = 0, cy = 0, contrast = 0;
+        double cx = 0, cy = 0, contrast = 0, brightness = 0;
         if (area > 0)
         {
             var m = Cv2.Moments(mask, true);
@@ -51,6 +58,8 @@ public static class FrameAnalyzer
             cy = m.M01 / m.M00;
             Cv2.MeanStdDev(small, out Scalar mean, out Scalar std, mask);
             contrast = mean.Val0 > 1 ? std.Val0 / mean.Val0 : 0;
+            // 円盤の明るさ（固定スケールの0〜255）。基準画像との比で薄雲などによる全体の減光を捉える
+            brightness = mean.Val0;
         }
 
         const int edgeMargin = 3;
@@ -77,10 +86,13 @@ public static class FrameAnalyzer
             }
         }
 
-        byte[]? preview = null;
+        byte[]? previewGray = null;
+        byte[]? previewOriginal = null;
         if (withPreview)
         {
-            Cv2.ImEncode(".jpg", small, out preview, new ImageEncodingParam(ImwriteFlags.JpegQuality, 80));
+            previewGray = EncodePreview(gray8);
+            using var color8 = ToByte(color);
+            previewOriginal = EncodePreview(color8);
         }
 
         return new FrameMetrics
@@ -90,6 +102,7 @@ public static class FrameAnalyzer
             CenterX = cx,
             CenterY = cy,
             Contrast = contrast,
+            DiskBrightness = brightness,
             Range = range,
             BackgroundLevel = hi > 1 ? bg / hi : 0,
             TouchesEdge = edge,
@@ -98,8 +111,26 @@ public static class FrameAnalyzer
             EdgeArtifactSide = artSide,
             Width = small.Width,
             Height = small.Height,
-            PreviewJpeg = preview,
+            PreviewJpeg = previewGray,
+            OriginalJpeg = previewOriginal,
         };
+    }
+
+    /// <summary>プレビュー用に縮小してJPEG化する（拡大表示の最大幅まで）。</summary>
+    private static byte[] EncodePreview(Mat img8)
+    {
+        using var resized = new Mat();
+        if (img8.Width > PreviewWidth)
+        {
+            int h = Math.Max(1, (int)Math.Round(img8.Height * (PreviewWidth / (double)img8.Width)));
+            Cv2.Resize(img8, resized, new Size(PreviewWidth, h), 0, 0, InterpolationFlags.Area);
+        }
+        else
+        {
+            img8.CopyTo(resized);
+        }
+        Cv2.ImEncode(".jpg", resized, out byte[] jpg, new ImageEncodingParam(ImwriteFlags.JpegQuality, 85));
+        return jpg;
     }
 
     /// <summary>引き伸ばしと見なす最小の複製行数（元画像のピクセル数）。</summary>
@@ -149,14 +180,43 @@ public static class FrameAnalyzer
         using (line) return Cv2.CountNonZero(line);
     }
 
+    /// <summary>1ch/3ch/4chのいずれでもBGR(同じビット深度)へそろえる。</summary>
+    private static Mat ToBgr(Mat src)
+    {
+        var dst = new Mat();
+        switch (src.Channels())
+        {
+            case 1:
+                Cv2.CvtColor(src, dst, ColorConversionCodes.GRAY2BGR);
+                break;
+            case 4:
+                Cv2.CvtColor(src, dst, ColorConversionCodes.BGRA2BGR);
+                break;
+            default:
+                src.CopyTo(dst);
+                break;
+        }
+        return dst;
+    }
+
+    /// <summary>
+    /// 8bitへ変換する。<b>フレームごとの正規化は行わず固定スケール</b>とする
+    /// （16bit→8bitは1/257）。正規化すると、全体が暗くなったフレームが基準と同じ明るさに
+    /// 引き戻され、減光を検出できなくなる。
+    /// </summary>
     private static Mat ToByte(Mat src)
     {
         if (src.Depth() == MatType.CV_8U) return src.Clone();
+
         var dst = new Mat();
-        // 16bit等は0〜255へ正規化（絶対値は後段で使わないため線形変換で十分）
-        src.MinMaxLoc(out _, out double maxVal);
-        double max = maxVal > 0 ? maxVal : 65535;
-        src.ConvertTo(dst, MatType.CV_8U, 255.0 / max);
+        double scale = 1.0 / 257.0;
+        if (src.Depth() == MatType.CV_32F || src.Depth() == MatType.CV_64F)
+        {
+            // 浮動小数は0〜1の想定。1を大きく超える場合は16bit相当として扱う
+            src.MinMaxLoc(out _, out double maxVal);
+            scale = maxVal <= 1.5 ? 255.0 : 1.0 / 257.0;
+        }
+        src.ConvertTo(dst, MatType.CV_8U, scale);
         return dst;
     }
 
