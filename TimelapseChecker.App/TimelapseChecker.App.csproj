@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -26,7 +26,7 @@
   <!-- ビルドのたびにリビジョン(4桁目)を1つ増やす。Major.Minor.Buildはここを直接編集して手動管理する。
        WPFのXAMLコンパイル用一時プロジェクト(*_wpftmp.csproj)でも走り二重加算されるため、本体のみ実行する。 -->
   <PropertyGroup>
-    <VersionMajorMinorBuild>1.0.0</VersionMajorMinorBuild>
+    <VersionMajorMinorBuild>1.0.1</VersionMajorMinorBuild>
     <RevisionFile>$(MSBuildProjectDirectory)\revision.txt</RevisionFile>
   </PropertyGroup>
 
@@ -48,3 +48,4 @@
   </Target>
 
 </Project>
+

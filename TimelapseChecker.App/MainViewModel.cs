@@ -620,13 +620,14 @@ public partial class MainViewModel : ObservableObject
 
         string detail = r.IsCalibrating
             ? "基準フレーム"
-            : $"面積 {r.AreaRatio:P0} / ずれ {r.Shift:F2} / 明るさ {r.BrightnessRatio:P0} / コントラスト {r.ContrastRatio:P0} / 背景 {r.BackgroundLift:+0.00;-0.00;0.00}";
+            : $"面積 {r.AreaRatio:P0} / ずれ {r.Shift:F2} / 明るさ {r.BrightnessRatio:P0} / ムラ {r.Unevenness:P0} / コントラスト {r.ContrastRatio:P0} / 背景 {r.BackgroundLift:+0.00;-0.00;0.00}";
 
         var sb = new StringBuilder();
         sb.AppendLine($"面積比（直近基準）: {r.AreaRatio:P1}");
         sb.AppendLine($"面積比（開始時基準）: {r.AreaRatioSession:P1}");
         sb.AppendLine($"重心ずれ（半径比）: {r.Shift:F3}");
         sb.AppendLine($"明るさ比: {r.BrightnessRatio:P1}");
+        sb.AppendLine($"暗い帯・ムラの深さ: {r.Unevenness:P1}");
         sb.AppendLine($"コントラスト比: {r.ContrastRatio:P1}");
         sb.AppendLine($"明暗差の比: {r.RangeRatio:P1}");
         sb.AppendLine($"背景の持ち上がり: {r.BackgroundLift:+0.000;-0.000;0.000}");
@@ -705,7 +706,7 @@ public partial class MainViewModel : ObservableObject
     {
         try
         {
-            const string header = "time,file,level,area_ratio,area_ratio_session,shift,brightness_ratio,contrast_ratio,range_ratio,bg_lift,edge,edge_artifact,edge_artifact_side,edge_artifact_run,reasons";
+            const string header = "time,file,level,area_ratio,area_ratio_session,shift,brightness_ratio,unevenness,contrast_ratio,range_ratio,bg_lift,edge,edge_artifact,edge_artifact_side,edge_artifact_run,reasons";
             string path = Path.Combine(AppPaths.LogDirectory, $"{now:yyyyMMdd}.csv");
 
             // 列構成が異なる旧形式のファイルが残っている場合は、列がずれないよう退避して新しいファイルを作る
@@ -734,6 +735,7 @@ public partial class MainViewModel : ObservableObject
                 r.AreaRatioSession.ToString("F3"),
                 r.Shift.ToString("F3"),
                 r.BrightnessRatio.ToString("F3"),
+                r.Unevenness.ToString("F3"),
                 r.ContrastRatio.ToString("F3"),
                 r.RangeRatio.ToString("F3"),
                 r.BackgroundLift.ToString("F3"),
@@ -761,6 +763,10 @@ public partial class MainViewModel : ObservableObject
         return bmp;
     }
 }
+
+
+
+
 
 
 

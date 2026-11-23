@@ -281,6 +281,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <TextBlock Grid.Column="1" Grid.Row="0" Text="注意" Foreground="{StaticResource TextSecondaryBrush}" Margin="4,0"/>
@@ -314,7 +315,12 @@
                     <TextBox Grid.Row="7" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.BrightnessCaution}"/>
                     <TextBox Grid.Row="7" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.BrightnessWarning}"/>
 
-                    <StackPanel x:Name="SettingsOptions" Grid.Column="4" Grid.RowSpan="8">
+                    <TextBlock Grid.Row="8" Text="円盤の暗い帯・ムラの深さ（以上で）" Margin="0,3,10,3"
+                               ToolTip="電線の影や薄雲が円盤の中央付近を横切ったときに大きくなる値（画像自身だけで決まり、基準画像は不要）"/>
+                    <TextBox Grid.Row="8" Grid.Column="1" Width="70" Margin="2" Text="{Binding Settings.Thresholds.UnevennessCaution}"/>
+                    <TextBox Grid.Row="8" Grid.Column="2" Width="70" Margin="2" Text="{Binding Settings.Thresholds.UnevennessWarning}"/>
+
+                    <StackPanel x:Name="SettingsOptions" Grid.Column="4" Grid.RowSpan="9">
                         <CheckBox Content="警告時に音を鳴らす" IsChecked="{Binding Settings.SoundEnabled}" Margin="0,3"/>
                         <CheckBox Content="注意でも音を鳴らす" IsChecked="{Binding Settings.SoundOnCaution}" Margin="0,3"/>
                         <CheckBox Content="起動時に自動で監視を開始する" IsChecked="{Binding Settings.AutoStart}" Margin="0,3"/>
@@ -369,6 +375,8 @@
         </Grid>
     </Grid>
 </Window>
+
+
 
 
 

@@ -25,7 +25,10 @@ public sealed class CheckResult
     public double ContrastRatio { get; init; } = 1;
     /// <summary>円盤の明るさの、基準に対する比。</summary>
     public double BrightnessRatio { get; init; } = 1;
+    /// <summary>円盤内の暗い帯・ムラの深さ（0〜1）。</summary>
+    public double Unevenness { get; init; }
     public double RangeRatio { get; init; } = 1;
     public double BackgroundLift { get; init; }
 }
+
 

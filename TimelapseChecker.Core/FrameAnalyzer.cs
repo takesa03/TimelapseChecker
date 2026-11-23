@@ -50,7 +50,7 @@ public static class FrameAnalyzer
         }
 
         int area = Cv2.CountNonZero(mask);
-        double cx = 0, cy = 0, contrast = 0, brightness = 0;
+        double cx = 0, cy = 0, contrast = 0, brightness = 0, unevenness = 0;
         if (area > 0)
         {
             var m = Cv2.Moments(mask, true);
@@ -60,6 +60,7 @@ public static class FrameAnalyzer
             contrast = mean.Val0 > 1 ? std.Val0 / mean.Val0 : 0;
             // 円盤の明るさ（固定スケールの0〜255）。基準画像との比で薄雲などによる全体の減光を捉える
             brightness = mean.Val0;
+            unevenness = DarkPatchDepth(small, cx, cy, Math.Sqrt(area / Math.PI));
         }
 
         const int edgeMargin = 3;
@@ -103,6 +104,7 @@ public static class FrameAnalyzer
             CenterY = cy,
             Contrast = contrast,
             DiskBrightness = brightness,
+            Unevenness = unevenness,
             Range = range,
             BackgroundLevel = hi > 1 ? bg / hi : 0,
             TouchesEdge = edge,
@@ -151,6 +153,60 @@ public static class FrameAnalyzer
         }
         Cv2.ImEncode(".jpg", resized, out byte[] jpg, new ImageEncodingParam(ImwriteFlags.JpegQuality, 85));
         return jpg;
+    }
+
+    /// <summary>
+    /// 円盤内の「暗い帯・ムラ」の深さ（0〜1）。電線の影や薄雲が円盤の中央付近を横切っても、
+    /// 面積や重心は変わらないため、別の指標として見る。
+    /// 円盤を、中心からの距離ごとの平均の明るさ（周辺減光）で割り、その2パーセンタイルが
+    /// どれだけ1を下回るかで表す（=1-p2）。基準画像は不要で、画像自身だけで決まる。
+    /// </summary>
+    private static double DarkPatchDepth(Mat small, double cx, double cy, double radius)
+    {
+        if (radius < 20) return 0;
+
+        using var blur = new Mat();
+        Cv2.GaussianBlur(small, blur, new Size(0, 0), 6);   // 黒点・粒状模様などの細かい構造をならす
+        blur.GetArray(out byte[] d);
+        int w = blur.Width, h = blur.Height;
+
+        const int bins = 40;
+        var sum = new double[bins];
+        var cnt = new int[bins];
+        var binOf = new int[d.Length];
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                int i = y * w + x;
+                double r = Math.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / radius;
+                if (r < 0.88)
+                {
+                    int b = Math.Min((int)(r * bins), bins - 1);
+                    binOf[i] = b;
+                    sum[b] += d[i];
+                    cnt[b]++;
+                }
+                else
+                {
+                    binOf[i] = -1;
+                }
+            }
+        }
+
+        var residual = new List<double>();
+        for (int i = 0; i < d.Length; i++)
+        {
+            int b = binOf[i];
+            if (b < 0) continue;
+            double mean = sum[b] / cnt[b];
+            if (mean > 1) residual.Add(d[i] / mean);
+        }
+        if (residual.Count < 100) return 0;
+
+        residual.Sort();
+        double p2 = residual[(int)(residual.Count * 0.02)];
+        return Math.Max(0, 1 - p2);
     }
 
     /// <summary>引き伸ばしと見なす最小の複製行数（元画像のピクセル数）。</summary>
@@ -252,4 +308,8 @@ public static class FrameAnalyzer
         return hist.Length - 1;
     }
 }
+
+
+
+
 

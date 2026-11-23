@@ -111,6 +111,11 @@ public sealed class SequenceChecker
         else if (brightnessRatio < th.BrightnessCaution)
             Raise(CheckLevel.Caution, $"円盤の明るさが基準の{brightnessRatio:P0}に低下");
 
+        if (m.Unevenness >= th.UnevennessWarning)
+            Raise(CheckLevel.Warning, $"円盤に暗い帯・ムラがある（深さ {m.Unevenness:P0}。電線・薄雲などが横切っている可能性）");
+        else if (m.Unevenness >= th.UnevennessCaution)
+            Raise(CheckLevel.Caution, $"円盤に暗い帯・ムラがある（深さ {m.Unevenness:P0}）");
+
         if (bgLift > th.BackgroundWarning)
             Raise(CheckLevel.Warning, $"背景が持ち上がっている（+{bgLift:P0}）");
         else if (bgLift > th.BackgroundCaution)
@@ -148,6 +153,7 @@ public sealed class SequenceChecker
             Shift = shift,
             ContrastRatio = contrastRatio,
             BrightnessRatio = brightnessRatio,
+            Unevenness = m.Unevenness,
             RangeRatio = rangeRatio,
             BackgroundLift = bgLift,
         };
@@ -182,6 +188,8 @@ public sealed class SequenceChecker
         };
     }
 }
+
+
 
 
 

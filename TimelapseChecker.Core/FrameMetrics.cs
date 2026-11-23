@@ -44,10 +44,14 @@ public sealed class FrameMetrics
     /// <summary>円盤の明るさ（円盤マスク内の平均、固定スケールの0〜255）。基準画像との比で減光を見る。</summary>
     public double DiskBrightness { get; init; }
 
+    /// <summary>円盤内の暗い帯・ムラの深さ（0〜1）。電線の影や薄雲が円盤を横切ると大きくなる。</summary>
+    public double Unevenness { get; init; }
+
     /// <summary>プレビュー表示用のJPEGデータ（比較用＝解析に使うグレースケール画像を縮小したもの）。</summary>
     public byte[]? PreviewJpeg { get; init; }
 
     /// <summary>プレビュー表示用のJPEGデータ（元画像のカラーを縮小したもの）。</summary>
     public byte[]? OriginalJpeg { get; init; }
 }
+
 

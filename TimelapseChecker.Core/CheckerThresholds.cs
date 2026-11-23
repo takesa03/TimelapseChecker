@@ -23,6 +23,11 @@ public sealed class CheckerThresholds
     /// <summary>円盤の明るさが基準画像に対してこの比を下回ると「警告」。</summary>
     public double BrightnessWarning { get; set; } = 0.75;
 
+    /// <summary>円盤内の暗い帯・ムラの深さがこの値以上で「注意」（電線の影など）。画像自身だけで決まる値。</summary>
+    public double UnevennessCaution { get; set; } = 0.20;
+    /// <summary>円盤内の暗い帯・ムラの深さがこの値以上で「警告」。</summary>
+    public double UnevennessWarning { get; set; } = 0.30;
+
     /// <summary>背景持ち上がり（基準からの増加分）がこの値を超えると「注意」。</summary>
     public double BackgroundCaution { get; set; } = 0.10;
     /// <summary>背景持ち上がりがこの値を超えると「警告」。</summary>
@@ -43,4 +48,5 @@ public sealed class CheckerThresholds
     /// <summary>ローリング基準に使う直近の正常フレーム数。</summary>
     public int BaselineWindow { get; set; } = 10;
 }
+
 

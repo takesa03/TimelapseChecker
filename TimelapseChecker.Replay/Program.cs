@@ -33,9 +33,10 @@ foreach (var seq in Sequences(root))
         var r = checker.Evaluate(m);
         total++;
         if (r.Level != CheckLevel.Normal) bad++;
-        Console.WriteLine($"{name} {r.Level,-8} area={r.AreaRatio:F2}/{r.AreaRatioSession:F2} shift={r.Shift:F2} contrast={r.ContrastRatio:F2} bright={r.BrightnessRatio:F2} range={r.RangeRatio:F2} bg={r.BackgroundLift:+0.00;-0.00;0.00} edge={(m.TouchesEdge ? 1 : 0)} art={m.EdgeArtifactStrength:P1}{m.EdgeArtifactSide}  {string.Join(" / ", r.Reasons)}");
+        Console.WriteLine($"{name} {r.Level,-8} area={r.AreaRatio:F2}/{r.AreaRatioSession:F2} shift={r.Shift:F2} contrast={r.ContrastRatio:F2} bright={r.BrightnessRatio:F2} uneven={r.Unevenness:F2} range={r.RangeRatio:F2} bg={r.BackgroundLift:+0.00;-0.00;0.00} edge={(m.TouchesEdge ? 1 : 0)} art={m.EdgeArtifactStrength:P1}{m.EdgeArtifactSide}  {string.Join(" / ", r.Reasons)}");
     }
 }
 Console.WriteLine($"\n判定対象 {total} 枚中、注意/警告 {bad} 枚");
 return 0;
+
 

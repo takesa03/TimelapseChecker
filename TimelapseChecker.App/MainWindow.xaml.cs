@@ -244,7 +244,7 @@ public partial class MainWindow : Window
         {
             SettingsCol3.Width = new GridLength(0);
             SettingsCol4.Width = new GridLength(0);
-            Grid.SetRow(SettingsOptions, 8);
+            Grid.SetRow(SettingsOptions, 9);
             Grid.SetRowSpan(SettingsOptions, 1);
             Grid.SetColumn(SettingsOptions, 0);
             Grid.SetColumnSpan(SettingsOptions, 5);
@@ -256,7 +256,7 @@ public partial class MainWindow : Window
             SettingsCol3.Width = new GridLength(30);
             SettingsCol4.Width = new GridLength(1, GridUnitType.Star);
             Grid.SetRow(SettingsOptions, 0);
-            Grid.SetRowSpan(SettingsOptions, 8);
+            Grid.SetRowSpan(SettingsOptions, 9);
             Grid.SetColumn(SettingsOptions, 4);
             Grid.SetColumnSpan(SettingsOptions, 1);
             SettingsOptions.Margin = new Thickness(0);
@@ -423,6 +423,8 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) viewModel.SoundFilePath = dialog.FileName;
     }
 }
+
+
 
 
 
