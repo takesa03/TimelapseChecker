@@ -23,6 +23,12 @@ public class ResultItem
     public Brush LevelBrush { get; init; } = Brushes.Gray;
     public string Detail { get; init; } = "";
     public string Reason { get; init; } = "";
+
+    /// <summary>画像のフルパス。履歴から選んだときに、この画像を読み直して表示する。</summary>
+    public string FilePath { get; init; } = "";
+
+    /// <summary>この画像の判定値（左下の数値欄に出す文字列）。</summary>
+    public string MetricsText { get; init; } = "";
 }
 
 public partial class MainViewModel : ObservableObject
@@ -89,7 +95,9 @@ public partial class MainViewModel : ObservableObject
     private void UpdatePreviewSelection()
     {
         BaselinePreview = ShowOriginalImage ? baselineOriginal : baselineGray;
-        PreviewImage = ShowOriginalImage ? latestOriginal : latestGray;
+        PreviewImage = IsPinned
+            ? (ShowOriginalImage ? pinnedOriginal : pinnedGray)
+            : (ShowOriginalImage ? latestOriginal : latestGray);
         RefreshEnlarged();
     }
 
@@ -141,9 +149,123 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         EnlargedImage = img;
-        EnlargedTitle = (enlargeTarget == EnlargeTarget.Baseline ? "基準画像　" + baselineName : "最新画像　" + latestName)
+        EnlargedTitle = (enlargeTarget == EnlargeTarget.Baseline ? "基準画像　" + baselineName : (IsPinned ? "選択画像　" + pinnedName : "最新画像　" + latestName))
                         + $"　（{PreviewModeText}。クリックまたは Esc で閉じる）";
         IsEnlarged = true;
+    }
+
+    // ---- 判定履歴で選んだ画像の表示（「最新に戻る」で最新画像の表示へ戻せる） ----
+
+    /// <summary>判定履歴で選択している項目。選ぶと、その画像を右側のプレビューに表示する。</summary>
+    [ObservableProperty]
+    private ResultItem? selectedHistory;
+
+    /// <summary>履歴で選んだ画像を表示中か（falseなら、最新画像に自動で追従している）。</summary>
+    [ObservableProperty]
+    private bool isPinned;
+
+    /// <summary>右側のプレビューの見出し（「最新画像」／「選択画像」）。</summary>
+    [ObservableProperty]
+    private string viewHeader = "最新画像";
+
+
+    private ImageSource? pinnedGray, pinnedOriginal;
+    private string pinnedName = "";
+    private string latestMetricsText = "";
+    private int newSincePin;
+    private int pinRequestId;
+    private bool suppressSelection;
+
+    // 履歴の画像を何度も読み直さないよう、直近のプレビューを覚えておく
+    private readonly System.Collections.Generic.Dictionary<string, (ImageSource? Gray, ImageSource? Original)> previewCache = new();
+    private readonly System.Collections.Generic.Queue<string> previewCacheOrder = new();
+    private const int PreviewCacheSize = 8;
+
+    partial void OnSelectedHistoryChanged(ResultItem? value)
+    {
+        if (suppressSelection) return;
+
+        if (value == null)
+        {
+            // 選択中の項目が履歴から消えたとき（500件の上限）など
+            if (IsPinned) ShowLatestCore(clearSelection: false);
+            return;
+        }
+        _ = PinAsync(value);
+    }
+
+    private async Task PinAsync(ResultItem item)
+    {
+        int id = ++pinRequestId;
+        IsPinned = true;
+        ViewHeader = "選択画像";
+        pinnedName = item.FileName;
+        newSincePin = 0;
+        LatestFile = item.FileName;
+        MetricsText = item.MetricsText;
+
+        (ImageSource? Gray, ImageSource? Original) images;
+        if (item.FilePath == latestPath && (latestGray != null || latestOriginal != null))
+        {
+            // いま最新として表示している画像なら、読み直さない
+            images = (latestGray, latestOriginal);
+        }
+        else if (!previewCache.TryGetValue(item.FilePath, out images))
+        {
+            FrameAnalyzer.PreviewImages? loaded = null;
+            if (File.Exists(item.FilePath))
+            {
+                loaded = await Task.Run(() => FrameAnalyzer.LoadPreviews(item.FilePath));
+            }
+            if (id != pinRequestId) return;   // 読み込み中に、別の画像が選ばれた
+
+            if (loaded == null)
+            {
+                pinnedGray = pinnedOriginal = null;
+                UpdatePreviewSelection();
+                StatusMessage = $"画像を読み込めませんでした（移動・削除された可能性があります）: {item.FileName}";
+                return;
+            }
+
+            images = (ToImage(loaded.Gray), ToImage(loaded.Original));
+            previewCache[item.FilePath] = images;
+            previewCacheOrder.Enqueue(item.FilePath);
+            while (previewCacheOrder.Count > PreviewCacheSize) previewCache.Remove(previewCacheOrder.Dequeue());
+        }
+        if (id != pinRequestId) return;
+
+        pinnedGray = images.Gray;
+        pinnedOriginal = images.Original;
+        UpdatePreviewSelection();
+    }
+
+    private void UpdatePinRibbon()
+    {
+        // 見出しに新着の枚数を添える（画像の上には何も重ねない）
+        ViewHeader = newSincePin > 0 ? $"選択画像・新着{newSincePin}" : "選択画像";
+    }
+
+    /// <summary>最新画像の表示へ戻す（右側のプレビューが、また新しい画像に自動で追従する）。</summary>
+    [RelayCommand]
+    private void ShowLatest() => ShowLatestCore(clearSelection: true);
+
+    private void ShowLatestCore(bool clearSelection)
+    {
+        pinRequestId++;
+        IsPinned = false;
+        ViewHeader = "最新画像";
+        newSincePin = 0;
+
+        if (clearSelection)
+        {
+            suppressSelection = true;
+            SelectedHistory = null;
+            suppressSelection = false;
+        }
+
+        MetricsText = latestMetricsText;
+        LatestFile = latestName;
+        UpdatePreviewSelection();
     }
 
     // ---- 画像のカウント表示 ----
@@ -361,6 +483,8 @@ public partial class MainViewModel : ObservableObject
         latestPath = "";
         baselineGray = baselineOriginal = latestGray = latestOriginal = null;
         baselineName = latestName = "";
+        latestMetricsText = "";
+        ShowLatestCore(clearSelection: true);
         UpdatePreviewSelection();
         RefreshFileCount();
         ResetGraph();
@@ -483,7 +607,8 @@ public partial class MainViewModel : ObservableObject
 
         Level = r.Level;
         latestPath = m.FilePath;
-        LatestFile = name;
+        latestName = name;
+        if (!IsPinned) LatestFile = name;
         ReasonText = string.Join("\n", r.Reasons);
 
         (BannerText, BannerBrush) = r.Level switch
@@ -506,12 +631,18 @@ public partial class MainViewModel : ObservableObject
         sb.AppendLine($"明暗差の比: {r.RangeRatio:P1}");
         sb.AppendLine($"背景の持ち上がり: {r.BackgroundLift:+0.000;-0.000;0.000}");
         sb.Append($"画像端への接触: {(m.TouchesEdge ? "あり" : "なし")}");
-        MetricsText = sb.ToString();
+        latestMetricsText = sb.ToString();
+        if (!IsPinned) MetricsText = latestMetricsText;
 
-        latestName = name;
         latestGray = m.PreviewJpeg != null ? ToImage(m.PreviewJpeg) : null;
         latestOriginal = m.OriginalJpeg != null ? ToImage(m.OriginalJpeg) : null;
         UpdatePreviewSelection();
+        if (IsPinned)
+        {
+            // 選択画像を見ている間に届いた新しい画像は、表示を奪わず、件数だけ知らせる
+            newSincePin++;
+            UpdatePinRibbon();
+        }
 
         RefreshFileCount();
 
@@ -523,6 +654,8 @@ public partial class MainViewModel : ObservableObject
             LevelBrush = r.Level switch { CheckLevel.Warning => WarningBrush, CheckLevel.Caution => CautionBrush, _ => NormalBrush },
             Detail = detail,
             Reason = string.Join(" / ", r.Reasons),
+            FilePath = m.FilePath,
+            MetricsText = latestMetricsText,
         });
         while (History.Count > MaxHistory) History.RemoveAt(History.Count - 1);
 
@@ -628,6 +761,21 @@ public partial class MainViewModel : ObservableObject
         return bmp;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

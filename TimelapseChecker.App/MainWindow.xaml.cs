@@ -390,6 +390,15 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+
+        // 履歴で選んだ画像を表示中は、Esc で最新画像の表示へ戻す（入力欄の編集中は除く）
+        if (e.Key == System.Windows.Input.Key.Escape && viewModel.IsPinned
+            && System.Windows.Input.Keyboard.FocusedElement is not TextBox)
+        {
+            viewModel.ShowLatestCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
         base.OnPreviewKeyDown(e);
     }
 
@@ -414,6 +423,7 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog(this) == true) viewModel.SoundFilePath = dialog.FileName;
     }
 }
+
 
 
 

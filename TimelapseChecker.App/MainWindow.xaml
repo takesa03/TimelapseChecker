@@ -97,7 +97,25 @@
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="基準画像" FontWeight="Bold" Margin="0,0,0,4"/>
                 <Grid Grid.Row="0" Grid.Column="1" Margin="6,0,0,4">
-                    <TextBlock Text="最新画像" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ViewHeader}" FontWeight="Bold" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                        <Setter Property="Foreground" Value="#FFB74D"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- 選択画像を表示中だけ、見出しの横に出る。画像には重ならない -->
+                    <Button Content="最新へ" Command="{Binding ShowLatestCommand}" 
+                            VerticalAlignment="Center" Padding="8,0" FontSize="11" Margin="8,0,0,0"
+                            Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}"
+                            ToolTip="最新の画像の表示へ戻します（Esc キーでも戻せます）"/>
+                    </StackPanel>
                     <CheckBox Content="元画像" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11"
                               IsChecked="{Binding ShowOriginalImage}"
                               ToolTip="オン: 元画像（カラー）で表示 / オフ: 比較用（判定に使うグレースケール）で表示"/>
@@ -110,13 +128,25 @@
                     </Border.InputBindings>
                     <Image Source="{Binding BaselinePreview}" Stretch="Uniform"/>
                 </Border>
-                <Border Grid.Row="1" Grid.Column="1" Background="Black" Margin="3,0,0,0" Cursor="Hand"
-                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" ToolTip="クリックで拡大表示">
+                <Border Grid.Row="1" Grid.Column="1" Background="Black" Margin="3,0,0,0" Cursor="Hand" ToolTip="クリックで拡大表示">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPinned}" Value="True">
+                                    <Setter Property="BorderBrush" Value="#FFB74D"/>
+                                    <Setter Property="BorderThickness" Value="2"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
                     <Border.InputBindings>
                         <MouseBinding MouseAction="LeftClick" Command="{Binding EnlargeLatestCommand}"/>
                     </Border.InputBindings>
                     <Image Source="{Binding PreviewImage}" Stretch="Uniform"/>
                 </Border>
+
 
                 <TextBlock Grid.Row="2" Grid.Column="1" Margin="6,6,0,4" Text="{Binding LatestFile}"
                            TextTrimming="CharacterEllipsis" Foreground="{StaticResource TextSecondaryBrush}"/>
@@ -162,8 +192,22 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Grid.Row="0" Text="判定履歴（新しい順）" FontWeight="Bold" Margin="0,6,0,4"/>
-                <ListBox Grid.Row="1" ItemsSource="{Binding History}" HorizontalContentAlignment="Stretch"
+                <Grid Grid.Row="0" Margin="0,6,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="判定履歴（新しい順）" FontWeight="Bold" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="クリック／↑↓で、その画像を右に表示" FontSize="11" Margin="10,0,6,0"
+                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource TextDimBrush}"/>
+                    <Button Grid.Column="2" Content="最新を表示" Command="{Binding ShowLatestCommand}" Padding="8,1" FontSize="11"
+                            Visibility="{Binding IsPinned, Converter={StaticResource BoolToVis}}"
+                            ToolTip="選択を解除して、最新の画像の表示へ戻します（Esc キーでも戻せます）"/>
+                </Grid>
+                <ListBox Grid.Row="1" ItemsSource="{Binding History}" SelectedItem="{Binding SelectedHistory, Mode=TwoWay}"
+                         HorizontalContentAlignment="Stretch"
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
@@ -325,13 +369,6 @@
         </Grid>
     </Grid>
 </Window>
-
-
-
-
-
-
-
 
 
 

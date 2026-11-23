@@ -1,4 +1,4 @@
-using OpenCvSharp;
+﻿using OpenCvSharp;
 
 namespace TimelapseChecker.Core;
 
@@ -114,6 +114,26 @@ public static class FrameAnalyzer
             PreviewJpeg = previewGray,
             OriginalJpeg = previewOriginal,
         };
+    }
+
+    /// <summary>比較用（グレースケール）と元画像（カラー）のプレビューJPEG。</summary>
+    public sealed record PreviewImages(byte[] Gray, byte[] Original);
+
+    /// <summary>
+    /// 判定履歴で選んだ画像を表示するための、プレビューだけを作る（解析は行わない）。
+    /// 読み込めなければnull。
+    /// </summary>
+    public static PreviewImages? LoadPreviews(string path)
+    {
+        using var src = Cv2.ImRead(path, ImreadModes.Unchanged);
+        if (src.Empty()) return null;
+
+        using var color = ToBgr(src);
+        using var gray = new Mat();
+        Cv2.CvtColor(color, gray, ColorConversionCodes.BGR2GRAY);
+        using var gray8 = ToByte(gray);
+        using var color8 = ToByte(color);
+        return new PreviewImages(EncodePreview(gray8), EncodePreview(color8));
     }
 
     /// <summary>プレビュー用に縮小してJPEG化する（拡大表示の最大幅まで）。</summary>
@@ -232,3 +252,4 @@ public static class FrameAnalyzer
         return hist.Length - 1;
     }
 }
+
