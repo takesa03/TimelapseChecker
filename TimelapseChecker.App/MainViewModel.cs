@@ -375,7 +375,13 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     public void ApplyWatchFolderChange()
     {
-        if (!IsMonitoring || string.Equals(monitoredFolder, Settings.WatchFolder, StringComparison.OrdinalIgnoreCase)) return;
+        if (!IsMonitoring)
+        {
+            // 監視していなくても、フォルダの履歴ファイルがあれば、判定履歴を切り替える
+            if (!string.Equals(historyFolder, Settings.WatchFolder, StringComparison.OrdinalIgnoreCase)) LoadHistory(Settings.WatchFolder);
+            return;
+        }
+        if (string.Equals(monitoredFolder, Settings.WatchFolder, StringComparison.OrdinalIgnoreCase)) return;
 
         if (!Directory.Exists(Settings.WatchFolder))
         {
@@ -415,6 +421,7 @@ public partial class MainViewModel : ObservableObject
         alarm.Error += msg => StatusMessage = msg;
         InitializeGraph();
         InitializeCounts();
+        LoadHistory(Settings.WatchFolder);
     }
 
     private static Brush Freeze(SolidColorBrush b)
@@ -463,6 +470,8 @@ public partial class MainViewModel : ObservableObject
             monitor.BaselineChanged += OnBaselineChanged;
             monitor.Start(Settings.WatchFolder);
             monitoredFolder = Settings.WatchFolder;
+            if (!string.Equals(historyFolder, monitoredFolder, StringComparison.OrdinalIgnoreCase)) LoadHistory(monitoredFolder);
+            HistoryJournal.AppendSession(monitoredFolder, "start", AppVersionText);
         }
         catch (Exception ex)
         {
@@ -491,12 +500,16 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = $"監視中: {Settings.WatchFolder}";
     }
 
+    private string baselineSource = "自動";
+
     private void OnBaselineChanged(FrameMetrics baseline)
     {
         Application.Current.Dispatcher.BeginInvoke(() =>
         {
             if (!IsMonitoring) return;
             string path = baseline.FilePath;
+            HistoryJournal.AppendBaseline(monitoredFolder, HistoryJournal.MakeRelative(monitoredFolder, path), baselineSource);
+            baselineSource = "自動";
             BaselineText = path;
             // 指定した画像が意図通りか確認できるよう、基準画像のプレビューを更新する
             baselineName = Path.GetFileName(path);
@@ -515,7 +528,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>指定した画像を基準にし直す。</summary>
-    public async void SetBaselineFile(string path)
+    public async void SetBaselineFile(string path, string source = "指定")
     {
         if (monitor == null) return;
         // 「指定...」「最新を基準に」の操作。結果は、画面下部ではなくダイアログで知らせる
@@ -540,11 +553,16 @@ public partial class MainViewModel : ObservableObject
             if (answer != MessageBoxResult.Yes) return;
         }
 
-        if (candidate.Metrics != null) monitor.CommitBaseline(candidate.Metrics);
+        if (candidate.Metrics != null)
+        {
+            baselineSource = source;
+            monitor.CommitBaseline(candidate.Metrics);
+        }
     }
 
     private void Stop()
     {
+        if (monitor != null) HistoryJournal.AppendSession(monitoredFolder, "stop", AppVersionText);
         monitor?.Dispose();
         monitor = null;
         alarm.Stop();
@@ -560,6 +578,7 @@ public partial class MainViewModel : ObservableObject
     public void Shutdown()
     {
         SaveSettings();
+        if (monitor != null) HistoryJournal.AppendSession(monitoredFolder, "stop", AppVersionText);
         monitor?.Dispose();
         monitor = null;
         alarm.Stop();
@@ -581,7 +600,7 @@ public partial class MainViewModel : ObservableObject
             ShowWarning("基準にできる最新画像がまだありません。\n画像が出力されてから、もう一度押してください。");
             return;
         }
-        SetBaselineFile(latestPath);
+        SetBaselineFile(latestPath, "最新画像");
     }
 
     [RelayCommand]
@@ -596,6 +615,58 @@ public partial class MainViewModel : ObservableObject
         // 解析はワーカースレッドで行われるため、UI更新はDispatcher経由
         Application.Current.Dispatcher.BeginInvoke(() => Apply(r));
     }
+
+    private static string BuildDetail(HistoryEntry e) => e.Calibrating
+        ? "基準フレーム"
+        : $"面積 {e.Area:P0} / ずれ {e.Shift:F2} / 明るさ {e.Brightness:P0} / ムラ {e.Unevenness:P0} / コントラスト {e.Contrast:P0} / 背景 {e.BackgroundLift:+0.00;-0.00;0.00}";
+
+    private static string BuildMetricsText(HistoryEntry e)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"面積比（直近基準）: {e.Area:P1}");
+        sb.AppendLine($"面積比（開始時基準）: {e.AreaSession:P1}");
+        sb.AppendLine($"重心ずれ（半径比）: {e.Shift:F3}");
+        sb.AppendLine($"明るさ比: {e.Brightness:P1}");
+        sb.AppendLine($"暗い帯・ムラの深さ: {e.Unevenness:P1}");
+        sb.AppendLine($"コントラスト比: {e.Contrast:P1}");
+        sb.AppendLine($"明暗差の比: {e.Range:P1}");
+        sb.AppendLine($"背景の持ち上がり: {e.BackgroundLift:+0.000;-0.000;0.000}");
+        sb.Append($"画像端への接触: {(e.TouchesEdge ? "あり" : "なし")}");
+        return sb.ToString();
+    }
+
+    private ResultItem BuildItem(HistoryEntry e, string fullPath)
+    {
+        var level = (CheckLevel)e.Level;
+        return new ResultItem
+        {
+            Time = e.Time,
+            FileName = Path.GetFileName(fullPath),
+            LevelText = level switch { CheckLevel.Warning => "警告", CheckLevel.Caution => "注意", _ => "正常" },
+            LevelBrush = level switch { CheckLevel.Warning => WarningBrush, CheckLevel.Caution => CautionBrush, _ => NormalBrush },
+            Detail = BuildDetail(e),
+            Reason = string.Join(" / ", e.Reasons),
+            FilePath = fullPath,
+            MetricsText = BuildMetricsText(e),
+        };
+    }
+
+    private string historyFolder = "";
+
+    /// <summary>フォルダの履歴ファイルから、判定履歴を復元する（最新から最大 MaxHistory 件。ファイルには全件が残る）。</summary>
+    private void LoadHistory(string folder)
+    {
+        historyFolder = folder;
+        if (IsPinned) ShowLatestCore(clearSelection: true);
+        History.Clear();
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder)) return;
+        foreach (var e in HistoryJournal.LoadRecent(folder, MaxHistory))
+        {
+            History.Add(BuildItem(e, HistoryJournal.Resolve(folder, e.File)));
+        }
+    }
+
+    private static string AppVersionText => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "";
 
     private void Apply(CheckResult r)
     {
@@ -618,21 +689,24 @@ public partial class MainViewModel : ObservableObject
             _ => (r.IsCalibrating ? "正常（基準取得）" : "正常", NormalBrush),
         };
 
-        string detail = r.IsCalibrating
-            ? "基準フレーム"
-            : $"面積 {r.AreaRatio:P0} / ずれ {r.Shift:F2} / 明るさ {r.BrightnessRatio:P0} / ムラ {r.Unevenness:P0} / コントラスト {r.ContrastRatio:P0} / 背景 {r.BackgroundLift:+0.00;-0.00;0.00}";
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"面積比（直近基準）: {r.AreaRatio:P1}");
-        sb.AppendLine($"面積比（開始時基準）: {r.AreaRatioSession:P1}");
-        sb.AppendLine($"重心ずれ（半径比）: {r.Shift:F3}");
-        sb.AppendLine($"明るさ比: {r.BrightnessRatio:P1}");
-        sb.AppendLine($"暗い帯・ムラの深さ: {r.Unevenness:P1}");
-        sb.AppendLine($"コントラスト比: {r.ContrastRatio:P1}");
-        sb.AppendLine($"明暗差の比: {r.RangeRatio:P1}");
-        sb.AppendLine($"背景の持ち上がり: {r.BackgroundLift:+0.000;-0.000;0.000}");
-        sb.Append($"画像端への接触: {(m.TouchesEdge ? "あり" : "なし")}");
-        latestMetricsText = sb.ToString();
+        var entry = new HistoryEntry
+        {
+            Time = now,
+            File = HistoryJournal.MakeRelative(monitoredFolder, m.FilePath),
+            Level = (int)r.Level,
+            Calibrating = r.IsCalibrating,
+            Reasons = r.Reasons.ToList(),
+            Area = r.AreaRatio,
+            AreaSession = r.AreaRatioSession,
+            Shift = r.Shift,
+            Brightness = r.BrightnessRatio,
+            Unevenness = r.Unevenness,
+            Contrast = r.ContrastRatio,
+            Range = r.RangeRatio,
+            BackgroundLift = r.BackgroundLift,
+            TouchesEdge = m.TouchesEdge,
+        };
+        latestMetricsText = BuildMetricsText(entry);
         if (!IsPinned) MetricsText = latestMetricsText;
 
         latestGray = m.PreviewJpeg != null ? ToImage(m.PreviewJpeg) : null;
@@ -647,19 +721,10 @@ public partial class MainViewModel : ObservableObject
 
         RefreshFileCount();
 
-        History.Insert(0, new ResultItem
-        {
-            Time = now,
-            FileName = name,
-            LevelText = r.Level switch { CheckLevel.Warning => "警告", CheckLevel.Caution => "注意", _ => "正常" },
-            LevelBrush = r.Level switch { CheckLevel.Warning => WarningBrush, CheckLevel.Caution => CautionBrush, _ => NormalBrush },
-            Detail = detail,
-            Reason = string.Join(" / ", r.Reasons),
-            FilePath = m.FilePath,
-            MetricsText = latestMetricsText,
-        });
+        History.Insert(0, BuildItem(entry, m.FilePath));
         while (History.Count > MaxHistory) History.RemoveAt(History.Count - 1);
 
+        HistoryJournal.AppendFrame(monitoredFolder, entry);
         AppendLog(now, name, r);
         AddGraphPoint(now, r);
         UpdateAlarm(r.Level);
