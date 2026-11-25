@@ -114,7 +114,14 @@ public static class HistoryJournal
             string line = JsonSerializer.Serialize(record, Options) + "\n";
             lock (Gate)
             {
-                using var fs = new FileStream(PathFor(folder), FileMode.Append, FileAccess.Write, FileShare.ReadWrite);
+                using var fs = new FileStream(PathFor(folder), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+                // 前回の書き込み途中で終わった（末尾に改行が無い）ファイルでも、新しい記録が前の行に連結されないようにする
+                if (fs.Length > 0)
+                {
+                    fs.Seek(-1, SeekOrigin.End);
+                    if (fs.ReadByte() != '\n') line = "\n" + line;
+                }
+                fs.Seek(0, SeekOrigin.End);
                 var bytes = new UTF8Encoding(false).GetBytes(line);
                 fs.Write(bytes, 0, bytes.Length);
             }
